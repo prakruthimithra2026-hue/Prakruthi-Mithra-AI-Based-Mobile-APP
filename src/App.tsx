@@ -57,6 +57,20 @@ interface HandbookCategory {
   items: HandbookItem[];
 }
 
+interface CalculatorRow {
+  id: string;
+  label: string;
+  sublabel: string;
+  ratio: number;
+}
+
+interface Calculator {
+  id: string;
+  title: string;
+  baseRate: number;
+  rows: CalculatorRow[];
+}
+
 const INITIAL_HANDBOOK: HandbookCategory[] = [
   {
     id: '1',
@@ -100,10 +114,26 @@ const INITIAL_HANDBOOK: HandbookCategory[] = [
   }
 ];
 
+const INITIAL_CALCULATORS: Calculator[] = [
+  {
+    id: 'pmds-seed',
+    title: 'PMDS విత్తన క్యాలిక్యులేటర్',
+    baseRate: 13,
+    rows: [
+      { id: '1', label: 'ధాన్యాలు (Cereals)', sublabel: 'సజ్జలు, జొన్నలు, రాగులు, కొర్రలు, ఆరికలు', ratio: 3.9 },
+      { id: '2', label: 'పప్పు దినుసులు (Pulses)', sublabel: 'కందులు, పెసలు, మినుములు, అలసందలు, శనగలు', ratio: 3.9 },
+      { id: '3', label: 'నూనె గింజలు (Oil Seeds)', sublabel: 'వేరుశనగ, నువ్వులు, కుసుమలు, ఆముదాలు, ఆవాలు', ratio: 2.6 },
+      { id: '4', label: 'పశుగ్రాసం (Fodder)', sublabel: 'పిల్లిపెసర, అలసంద, గడ్డి రకాలు', ratio: 1.3 },
+      { id: '5', label: 'కూరగాయలు (Vegetables)', sublabel: 'బెండ, గోరుచిక్కుడు, సొరకాయ, టమోటా', ratio: 1.3 },
+    ]
+  }
+];
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [handbookData, setHandbookData] = useState<HandbookCategory[]>(INITIAL_HANDBOOK);
+  const [calculators, setCalculators] = useState<Calculator[]>(INITIAL_CALCULATORS);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedCrop, setSelectedCrop] = useState<Crop | null>(null);
   const [selectedInput, setSelectedInput] = useState<NaturalInput | null>(null);
@@ -112,7 +142,7 @@ export default function App() {
 
   const renderScreen = () => {
     switch (currentScreen) {
-      case 'home': return <HomeScreen onNavigate={setCurrentScreen} />;
+      case 'home': return <HomeScreen onNavigate={setCurrentScreen} calculators={calculators} />;
       case 'crops': return <CropsScreen onSelectCrop={setSelectedCrop} />;
       case 'inputs': return <InputsScreen onSelectInput={setSelectedInput} />;
       case 'chat': return <ChatScreen />;
@@ -123,9 +153,11 @@ export default function App() {
             onLogout={() => setIsAdminLoggedIn(false)} 
             categories={handbookData}
             setCategories={setHandbookData}
+            calculators={calculators}
+            setCalculators={setCalculators}
           /> : 
           <LoginScreen onLogin={() => setIsAdminLoggedIn(true)} />;
-      default: return <HomeScreen onNavigate={setCurrentScreen} />;
+      default: return <HomeScreen onNavigate={setCurrentScreen} calculators={calculators} />;
     }
   };
 
@@ -249,7 +281,7 @@ function BottomNavButton({ icon, label, active, onClick }: { icon: React.ReactNo
   );
 }
 
-function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
+function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => void, calculators: Calculator[] }) {
   const [acres, setAcres] = useState(1);
 
   return (
@@ -258,7 +290,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
       <section className="bg-[#1b7d36] text-white p-8 rounded-[40px] shadow-lg relative overflow-hidden">
         <div className="relative z-10">
           <h2 className="text-lg font-bold mb-3">శుభోదయం రైతు సోదరా!</h2>
-          <p className="opacity-90 mb-8 text-xs leading-relaxed max-w-[280px] text-justify">
+          <p className="opacity-90 mb-8 text-xs leading-relaxed max-w-[280px]">
             APCNF ప్రకృతి వ్యవసాయంతో భూమిని రక్షించండి, ఆరోగ్యాన్ని కాపాడండి.
           </p>
           <button 
@@ -294,71 +326,57 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
         </div>
       </div>
 
-      {/* PMDS Calculator Section */}
-      <div className="space-y-4">
-        <div className="flex justify-between items-center px-2">
-          <h3 className="text-sm font-bold text-[#1b7d36]">PMDS విత్తన క్యాలిక్యులేటర్</h3>
-          <button className="p-2 bg-[#f0fdf4] text-[#1b7d36] rounded-full">
-            <Share2 size={16} />
-          </button>
-        </div>
-        
-        <div className="bg-white p-8 rounded-[40px] border border-black/5 shadow-sm space-y-8">
-          <div className="flex items-center justify-between bg-[#f8f9fa] p-5 rounded-3xl border border-black/5">
-            <label className="text-stone-700 font-bold text-xs">ఎకరాల సంఖ్య:</label>
-            <div className="bg-white rounded-2xl px-6 py-2 border border-stone-200 min-w-[80px] text-center font-bold text-xl text-stone-800 shadow-sm">
-              {acres}
-            </div>
+      {/* Calculators Section */}
+      {calculators.map(calc => (
+        <div key={calc.id} className="space-y-4">
+          <div className="flex justify-between items-center px-2">
+            <h3 className="text-sm font-bold text-[#1b7d36]">{calc.title}</h3>
+            <button className="p-2 bg-[#f0fdf4] text-[#1b7d36] rounded-full">
+              <Share2 size={16} />
+            </button>
           </div>
-
-          <div className="space-y-8">
-            <div className="flex justify-between items-center border-b border-stone-50 pb-4">
-              <p className="text-stone-600 font-bold text-xs">మొత్తం విత్తనాలు (12-14kg/acre):</p>
-              <p className="text-2xl font-bold text-[#1b7d36]">{acres * 13}.0 kg</p>
+          
+          <div className="bg-white p-8 rounded-[40px] border border-black/5 shadow-sm space-y-8">
+            <div className="flex items-center justify-between bg-[#f8f9fa] p-5 rounded-3xl border border-black/5">
+              <label className="text-stone-700 font-bold text-xs">ఎకరాల సంఖ్య:</label>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setAcres(Math.max(0.5, acres - 0.5))}
+                  className="w-8 h-8 flex items-center justify-center bg-white rounded-full border border-stone-200 text-stone-600 font-bold"
+                >
+                  -
+                </button>
+                <div className="bg-white rounded-2xl px-6 py-2 border border-stone-200 min-w-[80px] text-center font-bold text-xl text-stone-800 shadow-sm">
+                  {acres}
+                </div>
+                <button 
+                  onClick={() => setAcres(acres + 0.5)}
+                  className="w-8 h-8 flex items-center justify-center bg-white rounded-full border border-stone-200 text-stone-600 font-bold"
+                >
+                  +
+                </button>
+              </div>
             </div>
 
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-[#1b7d36] font-bold text-xs">ధాన్యాలు (Cereals)</p>
-                <p className="text-xs text-stone-400 text-justify">సజ్జలు, జొన్నలు, రాగులు, కొర్రలు, ఆరికలు</p>
+            <div className="space-y-8">
+              <div className="flex justify-between items-center border-b border-stone-50 pb-4">
+                <p className="text-stone-600 font-bold text-xs">మొత్తం (per acre):</p>
+                <p className="text-2xl font-bold text-[#1b7d36]">{(acres * calc.baseRate).toFixed(1)} kg</p>
               </div>
-              <p className="font-bold text-stone-700 text-sm">{(acres * 3.9).toFixed(2)} kg</p>
-            </div>
 
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-[#1b7d36] font-bold text-xs">పప్పు దినుసులు (Pulses)</p>
-                <p className="text-xs text-stone-400 text-justify">కందులు, పెసలు, మినుములు, అలసందలు, శనగలు</p>
-              </div>
-              <p className="font-bold text-stone-700 text-sm">{(acres * 3.9).toFixed(2)} kg</p>
-            </div>
-
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-[#1b7d36] font-bold text-xs">నూనె గింజలు (Oil Seeds)</p>
-                <p className="text-xs text-stone-400 text-justify">వేరుశనగ, నువ్వులు, కుసుమలు, ఆముదాలు, ఆవాలు</p>
-              </div>
-              <p className="font-bold text-stone-700 text-sm">{(acres * 2.6).toFixed(2)} kg</p>
-            </div>
-
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-[#1b7d36] font-bold text-xs">పశుగ్రాసం (Fodder)</p>
-                <p className="text-xs text-stone-400 text-justify">పిల్లిపెసర, అలసంద, గడ్డి రకాలు</p>
-              </div>
-              <p className="font-bold text-stone-700 text-sm">{(acres * 1.3).toFixed(2)} kg</p>
-            </div>
-
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-[#1b7d36] font-bold text-xs">కూరగాయలు (Vegetables)</p>
-                <p className="text-xs text-stone-400 text-justify">బెండ, గోరుచిక్కుడు, సొరకాయ, టమోటా</p>
-              </div>
-              <p className="font-bold text-stone-700 text-sm">{(acres * 1.3).toFixed(2)} kg</p>
+              {calc.rows.map(row => (
+                <div key={row.id} className="flex justify-between items-start">
+                  <div className="space-y-1">
+                    <p className="text-[#1b7d36] font-bold text-xs">{row.label}</p>
+                    <p className="text-xs text-stone-400">{row.sublabel}</p>
+                  </div>
+                  <p className="font-bold text-stone-700 text-sm">{(acres * row.ratio).toFixed(2)} kg</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
-      </div>
+      ))}
 
       {/* Important Note Section */}
       <section className="bg-[#fff7ed] p-8 rounded-[40px] border border-orange-100 shadow-sm relative mb-8">
@@ -368,7 +386,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
           </div>
           <h3 className="text-lg font-bold text-stone-800">ముఖ్య గమనిక</h3>
         </div>
-        <p className="text-stone-700 text-xs leading-relaxed pr-16 text-justify">
+        <p className="text-stone-700 text-xs leading-relaxed pr-16">
           రసాయన ఎరువుల వాడకం వల్ల నేల సారం తగ్గిపోవడమే కాకుండా, మన ఆరోగ్యానికి కూడా ముప్పు. ప్రకృతి వ్యవసాయం ద్వారా తక్కువ పెట్టుబడితో ఎక్కువ లాభం పొందవచ్చు.
         </p>
         <div className="absolute top-8 right-8 bg-[#f26522] p-3 rounded-full shadow-lg">
@@ -396,21 +414,48 @@ function HomeCard({ icon, title, desc, onClick }: { icon: React.ReactNode, title
   );
 }
 
-function AdminScreen({ onLogout, categories, setCategories }: { 
+function AdminScreen({ onLogout, categories, setCategories, calculators, setCalculators }: { 
   onLogout: () => void, 
   categories: HandbookCategory[],
-  setCategories: React.Dispatch<React.SetStateAction<HandbookCategory[]>>
+  setCategories: React.Dispatch<React.SetStateAction<HandbookCategory[]>>,
+  calculators: Calculator[],
+  setCalculators: React.Dispatch<React.SetStateAction<Calculator[]>>
 }) {
+  const [activeTab, setActiveTab] = useState<'handbook' | 'calculators'>('handbook');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingItem, setEditingItem] = useState<{ catId: string, item: HandbookItem } | null>(null);
   const [editingCategory, setEditingCategory] = useState<HandbookCategory | null>(null);
   const [addingToCategory, setAddingToCategory] = useState<string | null>(null);
   const [newItemName, setNewItemName] = useState('');
+  const [editingCalculator, setEditingCalculator] = useState<Calculator | null>(null);
 
   const handleReset = () => {
     if (confirm('Are you sure you want to reset the handbook?')) {
       setCategories(INITIAL_HANDBOOK);
+      setCalculators(INITIAL_CALCULATORS);
     }
+  };
+
+  const handleAddCalculator = () => {
+    const newCalc: Calculator = {
+      id: Date.now().toString(),
+      title: 'కొత్త క్యాలిక్యులేటర్',
+      baseRate: 10,
+      rows: []
+    };
+    setCalculators(prev => [...prev, newCalc]);
+    setEditingCalculator(newCalc);
+  };
+
+  const handleDeleteCalculator = (id: string) => {
+    if (confirm('Delete this calculator?')) {
+      setCalculators(prev => prev.filter(c => c.id !== id));
+    }
+  };
+
+  const handleSaveCalculator = (updated: Calculator) => {
+    setCalculators(prev => prev.map(c => c.id === updated.id ? updated : c));
+    setEditingCalculator(null);
   };
 
   const handleAddCategory = () => {
@@ -496,6 +541,16 @@ function AdminScreen({ onLogout, categories, setCategories }: {
     );
   }
 
+  if (editingCalculator) {
+    return (
+      <CalculatorEditor 
+        calculator={editingCalculator}
+        onSave={handleSaveCalculator}
+        onCancel={() => setEditingCalculator(null)}
+      />
+    );
+  }
+
   return (
     <div className="p-4 space-y-6 pb-20">
       <div className="flex justify-between items-center">
@@ -505,149 +560,202 @@ function AdminScreen({ onLogout, categories, setCategories }: {
         </button>
       </div>
 
+      <div className="flex gap-2 bg-stone-100 p-1 rounded-2xl">
+        <button 
+          onClick={() => setActiveTab('handbook')}
+          className={`flex-1 py-2 rounded-xl font-bold transition-all ${activeTab === 'handbook' ? 'bg-white text-[#1b7d36] shadow-sm' : 'text-stone-400'}`}
+        >
+          Handbook
+        </button>
+        <button 
+          onClick={() => setActiveTab('calculators')}
+          className={`flex-1 py-2 rounded-xl font-bold transition-all ${activeTab === 'calculators' ? 'bg-white text-[#1b7d36] shadow-sm' : 'text-stone-400'}`}
+        >
+          Calculators
+        </button>
+      </div>
+
       <button 
         onClick={handleReset}
         className="w-full bg-rose-50 text-rose-500 py-3 rounded-2xl font-bold border border-rose-100 hover:bg-rose-100 transition-colors"
       >
-        Reset Handbook
+        Reset All Data
       </button>
 
-      {/* Category Editor Modal-like section */}
-      {editingCategory && (
-        <div className="bg-amber-50 p-6 rounded-[32px] border border-amber-200 shadow-sm space-y-4">
-          <h3 className="text-amber-800 font-bold">కేటగిరీ పేరు సవరించు</h3>
-          <div className="flex gap-2">
-            <input 
-              type="text" 
-              value={editingCategory.name}
-              onChange={e => setEditingCategory({ ...editingCategory, name: e.target.value })}
-              className="flex-1 bg-white border border-amber-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-            />
-            <button 
-              onClick={handleUpdateCategoryName}
-              className="bg-amber-600 text-white px-6 rounded-2xl font-bold shadow-md"
-            >
-              Save
-            </button>
-            <button 
-              onClick={() => setEditingCategory(null)}
-              className="bg-stone-200 text-stone-600 px-4 rounded-2xl font-bold"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      {activeTab === 'handbook' ? (
+        <>
+          {/* Category Editor Modal-like section */}
+          {editingCategory && (
+            <div className="bg-amber-50 p-6 rounded-[32px] border border-amber-200 shadow-sm space-y-4">
+              <h3 className="text-amber-800 font-bold">కేటగిరీ పేరు సవరించు</h3>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={editingCategory.name}
+                  onChange={e => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                  className="flex-1 bg-white border border-amber-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                />
+                <button 
+                  onClick={handleUpdateCategoryName}
+                  className="bg-amber-600 text-white px-6 rounded-2xl font-bold shadow-md"
+                >
+                  Save
+                </button>
+                <button 
+                  onClick={() => setEditingCategory(null)}
+                  className="bg-stone-200 text-stone-600 px-4 rounded-2xl font-bold"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
-      {/* Add Category Section */}
-      {!editingCategory && (
-        <div className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm space-y-4">
-          <h3 className="text-[#1b7d36] font-bold">కొత్త కేటగిరీని జోడించు</h3>
-          <div className="flex gap-2">
-            <input 
-              type="text" 
-              value={newCategoryName}
-              onChange={e => setNewCategoryName(e.target.value)}
-              placeholder="కేటగిరీ పేరు"
-              className="flex-1 bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
-            />
-            <button 
-              onClick={handleAddCategory}
-              className="bg-[#1b7d36] text-white p-4 rounded-2xl shadow-md hover:scale-105 transition-transform"
-            >
-              <Plus size={24} />
-            </button>
-          </div>
-        </div>
-      )}
+          {/* Add Category Section */}
+          {!editingCategory && (
+            <div className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm space-y-4">
+              <h3 className="text-[#1b7d36] font-bold">కొత్త కేటగిరీని జోడించు</h3>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={newCategoryName}
+                  onChange={e => setNewCategoryName(e.target.value)}
+                  placeholder="కేటగిరీ పేరు"
+                  className="flex-1 bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
+                />
+                <button 
+                  onClick={handleAddCategory}
+                  className="bg-[#1b7d36] text-white p-4 rounded-2xl shadow-md hover:scale-105 transition-transform"
+                >
+                  <Plus size={24} />
+                </button>
+              </div>
+            </div>
+          )}
 
-      {/* Categories List */}
-      <div className="space-y-8">
-        {categories.map(cat => (
-          <div key={cat.id} className="space-y-4 bg-stone-50/50 p-4 rounded-[40px] border border-black/5">
-            <div className="flex flex-col gap-2 px-2">
-              <div className="flex justify-between items-center">
-                <h4 className="text-xl font-bold text-[#1b7d36]">{cat.name}</h4>
+          {/* Categories List */}
+          <div className="space-y-8">
+            {categories.map(cat => (
+              <div key={cat.id} className="space-y-4 bg-stone-50/50 p-4 rounded-[40px] border border-black/5">
+                <div className="flex flex-col gap-2 px-2">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-xl font-bold text-[#1b7d36]">{cat.name}</h4>
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => setEditingCategory(cat)}
+                        className="text-blue-500 text-sm font-bold"
+                      >
+                        సవరించు
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteCategory(cat.id)}
+                        className="text-rose-500 text-sm font-bold"
+                      >
+                        తొలగించు
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {addingToCategory === cat.id ? (
+                    <div className="flex gap-2 bg-white p-2 rounded-xl border border-emerald-200">
+                      <input 
+                        type="text" 
+                        autoFocus
+                        value={newItemName}
+                        onChange={e => setNewItemName(e.target.value)}
+                        placeholder="సబ్ కేటగిరీ పేరు"
+                        className="flex-1 px-3 py-1 text-sm focus:outline-none"
+                        onKeyPress={e => e.key === 'Enter' && handleAddItem(cat.id)}
+                      />
+                      <button 
+                        onClick={() => handleAddItem(cat.id)}
+                        className="bg-[#1b7d36] text-white px-3 py-1 rounded-lg text-xs font-bold"
+                      >
+                        Add
+                      </button>
+                      <button 
+                        onClick={() => { setAddingToCategory(null); setNewItemName(''); }}
+                        className="text-stone-400 px-2"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setAddingToCategory(cat.id)}
+                      className="w-full bg-emerald-50 text-[#1b7d36] py-2 rounded-xl text-sm font-bold border border-emerald-100 hover:bg-emerald-100 transition-colors"
+                    >
+                      + కొత్త సబ్ కేటగిరీని జోడించు
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {cat.items.map(item => (
+                    <div key={item.id} className="bg-white p-4 rounded-2xl border border-black/5 shadow-sm flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {item.image && <img src={item.image} className="w-10 h-10 rounded-lg object-cover" referrerPolicy="no-referrer" />}
+                        <span className="font-bold text-stone-700">{item.name}</span>
+                      </div>
+                      <div className="flex gap-4">
+                        <button 
+                          onClick={() => setEditingItem({ catId: cat.id, item })}
+                          className="text-blue-500 font-bold text-sm"
+                        >
+                          సవరించు
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteItem(cat.id, item.id)}
+                          className="text-rose-500 font-bold text-sm"
+                        >
+                          తొలగించు
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {cat.items.length === 0 && (
+                    <p className="text-center text-stone-400 text-xs py-2 italic">No subcategories yet.</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="space-y-6">
+          <button 
+            onClick={handleAddCalculator}
+            className="w-full bg-[#1b7d36] text-white py-4 rounded-2xl font-bold shadow-md flex items-center justify-center gap-2"
+          >
+            <Plus size={20} /> కొత్త క్యాలిక్యులేటర్ జోడించు
+          </button>
+
+          <div className="space-y-4">
+            {calculators.map(calc => (
+              <div key={calc.id} className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm flex items-center justify-between">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-stone-800">{calc.title}</h4>
+                  <p className="text-xs text-stone-400">{calc.rows.length} rows • {calc.baseRate} kg/acre</p>
+                </div>
                 <div className="flex gap-4">
                   <button 
-                    onClick={() => setEditingCategory(cat)}
-                    className="text-blue-500 text-sm font-bold"
+                    onClick={() => setEditingCalculator(calc)}
+                    className="text-blue-500 font-bold text-sm"
                   >
                     సవరించు
                   </button>
                   <button 
-                    onClick={() => handleDeleteCategory(cat.id)}
-                    className="text-rose-500 text-sm font-bold"
+                    onClick={() => handleDeleteCalculator(calc.id)}
+                    className="text-rose-500 font-bold text-sm"
                   >
                     తొలగించు
                   </button>
                 </div>
               </div>
-              
-              {addingToCategory === cat.id ? (
-                <div className="flex gap-2 bg-white p-2 rounded-xl border border-emerald-200">
-                  <input 
-                    type="text" 
-                    autoFocus
-                    value={newItemName}
-                    onChange={e => setNewItemName(e.target.value)}
-                    placeholder="సబ్ కేటగిరీ పేరు"
-                    className="flex-1 px-3 py-1 text-sm focus:outline-none"
-                    onKeyPress={e => e.key === 'Enter' && handleAddItem(cat.id)}
-                  />
-                  <button 
-                    onClick={() => handleAddItem(cat.id)}
-                    className="bg-[#1b7d36] text-white px-3 py-1 rounded-lg text-xs font-bold"
-                  >
-                    Add
-                  </button>
-                  <button 
-                    onClick={() => { setAddingToCategory(null); setNewItemName(''); }}
-                    className="text-stone-400 px-2"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              ) : (
-                <button 
-                  onClick={() => setAddingToCategory(cat.id)}
-                  className="w-full bg-emerald-50 text-[#1b7d36] py-2 rounded-xl text-sm font-bold border border-emerald-100 hover:bg-emerald-100 transition-colors"
-                >
-                  + కొత్త సబ్ కేటగిరీని జోడించు
-                </button>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              {cat.items.map(item => (
-                <div key={item.id} className="bg-white p-4 rounded-2xl border border-black/5 shadow-sm flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {item.image && <img src={item.image} className="w-10 h-10 rounded-lg object-cover" referrerPolicy="no-referrer" />}
-                    <span className="font-bold text-stone-700">{item.name}</span>
-                  </div>
-                  <div className="flex gap-4">
-                    <button 
-                      onClick={() => setEditingItem({ catId: cat.id, item })}
-                      className="text-blue-500 font-bold text-sm"
-                    >
-                      సవరించు
-                    </button>
-                    <button 
-                      onClick={() => handleDeleteItem(cat.id, item.id)}
-                      className="text-rose-500 font-bold text-sm"
-                    >
-                      తొలగించు
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {cat.items.length === 0 && (
-                <p className="text-center text-stone-400 text-xs py-2 italic">No subcategories yet.</p>
-              )}
-            </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1014,7 +1122,7 @@ function HandbookScreen({ onNavigate, categories }: { onNavigate: (s: Screen) =>
               {selectedItem.sections.map((section) => (
                 <div key={section.id} className="space-y-2">
                   <h4 className="text-xl font-bold text-stone-800 border-l-4 border-[#1b7d36] pl-3">{section.title}</h4>
-                  <div className="text-stone-600 leading-relaxed whitespace-pre-wrap pl-4">
+                  <div className="text-stone-600 leading-relaxed pl-4">
                     {section.content}
                   </div>
                 </div>
@@ -1099,6 +1207,130 @@ function HandbookScreen({ onNavigate, categories }: { onNavigate: (s: Screen) =>
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function CalculatorEditor({ calculator, onSave, onCancel }: {
+  calculator: Calculator,
+  onSave: (calc: Calculator) => void,
+  onCancel: () => void
+}) {
+  const [edited, setEdited] = useState<Calculator>({ ...calculator });
+
+  const handleAddRow = () => {
+    const newRow: CalculatorRow = {
+      id: Date.now().toString(),
+      label: '',
+      sublabel: '',
+      ratio: 0
+    };
+    setEdited({ ...edited, rows: [...edited.rows, newRow] });
+  };
+
+  const handleUpdateRow = (id: string, field: keyof CalculatorRow, value: any) => {
+    setEdited({
+      ...edited,
+      rows: edited.rows.map(r => r.id === id ? { ...r, [field]: value } : r)
+    });
+  };
+
+  const handleDeleteRow = (id: string) => {
+    setEdited({
+      ...edited,
+      rows: edited.rows.filter(r => r.id !== id)
+    });
+  };
+
+  return (
+    <div className="p-4 space-y-6 pb-20">
+      <div className="flex items-center justify-between">
+        <button onClick={onCancel} className="p-2 hover:bg-black/5 rounded-full">
+          <ChevronLeft size={24} />
+        </button>
+        <h2 className="text-xl font-bold text-stone-800">క్యాలిక్యులేటర్ సవరించు</h2>
+        <div className="w-10" />
+      </div>
+
+      <div className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm space-y-4">
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-stone-400 uppercase">Title</label>
+          <input 
+            type="text" 
+            value={edited.title}
+            onChange={e => setEdited({ ...edited, title: e.target.value })}
+            className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-stone-400 uppercase">Base Rate (kg/acre)</label>
+          <input 
+            type="number" 
+            value={edited.baseRate}
+            onChange={e => setEdited({ ...edited, baseRate: parseFloat(e.target.value) || 0 })}
+            className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex justify-between items-center px-2">
+          <h3 className="font-bold text-stone-800">Rows</h3>
+          <button 
+            onClick={handleAddRow}
+            className="text-[#1b7d36] font-bold text-sm flex items-center gap-1"
+          >
+            <Plus size={16} /> Add Row
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {edited.rows.map(row => (
+            <div key={row.id} className="bg-white p-4 rounded-2xl border border-black/5 shadow-sm space-y-3">
+              <div className="flex justify-between gap-2">
+                <input 
+                  type="text" 
+                  placeholder="Label (e.g. Cereals)"
+                  value={row.label}
+                  onChange={e => handleUpdateRow(row.id, 'label', e.target.value)}
+                  className="flex-1 bg-[#f8f9fa] border border-stone-100 rounded-xl px-3 py-2 text-sm"
+                />
+                <button 
+                  onClick={() => handleDeleteRow(row.id)}
+                  className="text-rose-500 p-2"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <input 
+                type="text" 
+                placeholder="Sublabel (e.g. Paddy, Maize...)"
+                value={row.sublabel}
+                onChange={e => handleUpdateRow(row.id, 'sublabel', e.target.value)}
+                className="w-full bg-[#f8f9fa] border border-stone-100 rounded-xl px-3 py-2 text-xs"
+              />
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-bold text-stone-400 uppercase">Ratio</label>
+                <input 
+                  type="number" 
+                  step="0.1"
+                  value={row.ratio}
+                  onChange={e => handleUpdateRow(row.id, 'ratio', parseFloat(e.target.value) || 0)}
+                  className="w-24 bg-[#f8f9fa] border border-stone-100 rounded-xl px-3 py-2 text-sm"
+                />
+                <span className="text-xs text-stone-400">kg/acre</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <button 
+        onClick={() => onSave(edited)}
+        className="w-full bg-[#1b7d36] text-white py-4 rounded-2xl font-bold shadow-md hover:bg-[#16652b] transition-colors"
+      >
+        Save Calculator
+      </button>
     </div>
   );
 }
