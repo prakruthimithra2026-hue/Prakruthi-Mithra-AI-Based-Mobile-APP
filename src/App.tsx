@@ -31,6 +31,8 @@ import {
   CloudRain,
   CloudSun,
   Wind,
+  Video,
+  Play,
   Share2,
   AlertTriangle,
   Megaphone
@@ -39,7 +41,14 @@ import { CROPS, NATURAL_INPUTS, Crop, NaturalInput } from './data';
 import { chatWithPrakritiMitra } from './services/geminiService';
 import ReactMarkdown from 'react-markdown';
 
-type Screen = 'home' | 'crops' | 'inputs' | 'chat' | 'handbook' | 'admin';
+type Screen = 'home' | 'crops' | 'inputs' | 'chat' | 'handbook' | 'admin' | 'videos';
+
+interface VideoItem {
+  id: string;
+  title: string;
+  url: string;
+  thumbnail?: string;
+}
 
 interface HandbookSection {
   id: string;
@@ -133,11 +142,38 @@ const INITIAL_CALCULATORS: Calculator[] = [
   }
 ];
 
+const INITIAL_VIDEOS: VideoItem[] = [
+  {
+    id: '1',
+    title: 'ప్రకృతి వ్యవసాయం పరిచయం',
+    url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+    thumbnail: 'https://picsum.photos/seed/video1/800/400'
+  }
+];
+
+const getYouTubeEmbedUrl = (url: string) => {
+  if (!url) return '';
+  if (url.includes('embed/')) return url;
+  
+  let videoId = '';
+  if (url.includes('watch?v=')) {
+    videoId = url.split('watch?v=')[1].split('&')[0];
+  } else if (url.includes('youtu.be/')) {
+    videoId = url.split('youtu.be/')[1].split('?')[0];
+  }
+  
+  if (videoId) {
+    return `https://www.youtube.com/embed/${videoId}`;
+  }
+  return url;
+};
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [handbookData, setHandbookData] = useState<HandbookCategory[]>(INITIAL_HANDBOOK);
   const [calculators, setCalculators] = useState<Calculator[]>(INITIAL_CALCULATORS);
+  const [videos, setVideos] = useState<VideoItem[]>(INITIAL_VIDEOS);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedCrop, setSelectedCrop] = useState<Crop | null>(null);
   const [selectedInput, setSelectedInput] = useState<NaturalInput | null>(null);
@@ -151,6 +187,7 @@ export default function App() {
       case 'inputs': return <InputsScreen onSelectInput={setSelectedInput} />;
       case 'chat': return <ChatScreen />;
       case 'handbook': return <HandbookScreen onNavigate={setCurrentScreen} categories={handbookData} />;
+      case 'videos': return <VideosScreen videos={videos} />;
       case 'admin': 
         return isAdminLoggedIn ? 
           <AdminScreen 
@@ -159,6 +196,8 @@ export default function App() {
             setCategories={setHandbookData}
             calculators={calculators}
             setCalculators={setCalculators}
+            videos={videos}
+            setVideos={setVideos}
           /> : 
           <LoginScreen onLogin={() => setIsAdminLoggedIn(true)} />;
       default: return <HomeScreen onNavigate={setCurrentScreen} calculators={calculators} />;
@@ -261,6 +300,12 @@ export default function App() {
           label="సలహాదారు" 
           active={currentScreen === 'chat'} 
           onClick={() => setCurrentScreen('chat')} 
+        />
+        <BottomNavButton 
+          icon={<Video size={24} />} 
+          label="వీడియోలు" 
+          active={currentScreen === 'videos'} 
+          onClick={() => setCurrentScreen('videos')} 
         />
         <BottomNavButton 
           icon={<Book size={24} />} 
@@ -539,26 +584,60 @@ function HomeCard({ icon, title, desc, onClick }: { icon: React.ReactNode, title
   );
 }
 
-function AdminScreen({ onLogout, categories, setCategories, calculators, setCalculators }: { 
+function AdminScreen({ onLogout, categories, setCategories, calculators, setCalculators, videos, setVideos }: { 
   onLogout: () => void, 
   categories: HandbookCategory[],
   setCategories: React.Dispatch<React.SetStateAction<HandbookCategory[]>>,
   calculators: Calculator[],
-  setCalculators: React.Dispatch<React.SetStateAction<Calculator[]>>
+  setCalculators: React.Dispatch<React.SetStateAction<Calculator[]>>,
+  videos: VideoItem[],
+  setVideos: React.Dispatch<React.SetStateAction<VideoItem[]>>
 }) {
-  const [activeTab, setActiveTab] = useState<'handbook' | 'calculators'>('handbook');
+  const [activeTab, setActiveTab] = useState<'handbook' | 'calculators' | 'videos'>('handbook');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingItem, setEditingItem] = useState<{ catId: string, item: HandbookItem } | null>(null);
   const [editingCategory, setEditingCategory] = useState<HandbookCategory | null>(null);
   const [addingToCategory, setAddingToCategory] = useState<string | null>(null);
   const [newItemName, setNewItemName] = useState('');
   const [editingCalculator, setEditingCalculator] = useState<Calculator | null>(null);
+  
+  // Video management state
+  const [newVideoTitle, setNewVideoTitle] = useState('');
+  const [newVideoUrl, setNewVideoUrl] = useState('');
+  const [editingVideo, setEditingVideo] = useState<VideoItem | null>(null);
 
   const handleReset = () => {
-    if (confirm('Are you sure you want to reset the handbook?')) {
+    if (confirm('Are you sure you want to reset all data?')) {
       setCategories(INITIAL_HANDBOOK);
       setCalculators(INITIAL_CALCULATORS);
+      setVideos(INITIAL_VIDEOS);
     }
+  };
+
+  const handleAddVideo = () => {
+    if (!newVideoTitle.trim() || !newVideoUrl.trim()) return;
+    const newVideo: VideoItem = {
+      id: Date.now().toString(),
+      title: newVideoTitle,
+      url: getYouTubeEmbedUrl(newVideoUrl),
+      thumbnail: `https://picsum.photos/seed/${Date.now()}/800/400`
+    };
+    setVideos(prev => [...prev, newVideo]);
+    setNewVideoTitle('');
+    setNewVideoUrl('');
+  };
+
+  const handleDeleteVideo = (id: string) => {
+    if (confirm('Delete this video?')) {
+      setVideos(prev => prev.filter(v => v.id !== id));
+    }
+  };
+
+  const handleSaveVideo = () => {
+    if (!editingVideo || !editingVideo.title.trim() || !editingVideo.url.trim()) return;
+    const updatedVideo = { ...editingVideo, url: getYouTubeEmbedUrl(editingVideo.url) };
+    setVideos(prev => prev.map(v => v.id === updatedVideo.id ? updatedVideo : v));
+    setEditingVideo(null);
   };
 
   const handleAddCalculator = () => {
@@ -697,6 +776,12 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
           className={`flex-1 py-2 rounded-xl font-bold transition-all ${activeTab === 'calculators' ? 'bg-white text-[#1b7d36] shadow-sm' : 'text-stone-400'}`}
         >
           Calculators
+        </button>
+        <button 
+          onClick={() => setActiveTab('videos')}
+          className={`flex-1 py-2 rounded-xl font-bold transition-all ${activeTab === 'videos' ? 'bg-white text-[#1b7d36] shadow-sm' : 'text-stone-400'}`}
+        >
+          Videos
         </button>
       </div>
 
@@ -846,7 +931,7 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
             ))}
           </div>
         </>
-      ) : (
+      ) : activeTab === 'calculators' ? (
         <div className="space-y-6">
           <button 
             onClick={handleAddCalculator}
@@ -878,6 +963,105 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Video Editor Modal-like section */}
+          {editingVideo && (
+            <div className="bg-blue-50 p-6 rounded-[32px] border border-blue-200 shadow-sm space-y-4">
+              <h3 className="text-blue-800 font-bold">వీడియో సవరించు</h3>
+              <div className="space-y-3">
+                <input 
+                  type="text" 
+                  value={editingVideo.title}
+                  onChange={e => setEditingVideo({ ...editingVideo, title: e.target.value })}
+                  placeholder="వీడియో పేరు"
+                  className="w-full bg-white border border-blue-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+                <input 
+                  type="text" 
+                  value={editingVideo.url}
+                  onChange={e => setEditingVideo({ ...editingVideo, url: e.target.value })}
+                  placeholder="వీడియో లింక్ (YouTube Embed URL)"
+                  className="w-full bg-white border border-blue-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                />
+                <div className="flex gap-2">
+                  <button 
+                    onClick={handleSaveVideo}
+                    className="flex-1 bg-blue-600 text-white py-3 rounded-2xl font-bold shadow-md"
+                  >
+                    Save
+                  </button>
+                  <button 
+                    onClick={() => setEditingVideo(null)}
+                    className="flex-1 bg-stone-200 text-stone-600 py-3 rounded-2xl font-bold"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Add Video Section */}
+          {!editingVideo && (
+            <div className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm space-y-4">
+              <h3 className="text-[#1b7d36] font-bold">కొత్త వీడియోను జోడించు</h3>
+              <div className="space-y-3">
+                <input 
+                  type="text" 
+                  value={newVideoTitle}
+                  onChange={e => setNewVideoTitle(e.target.value)}
+                  placeholder="వీడియో పేరు"
+                  className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
+                />
+                <input 
+                  type="text" 
+                  value={newVideoUrl}
+                  onChange={e => setNewVideoUrl(e.target.value)}
+                  placeholder="వీడియో లింక్ (YouTube Embed URL)"
+                  className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
+                />
+                <button 
+                  onClick={handleAddVideo}
+                  className="w-full bg-[#1b7d36] text-white py-3 rounded-2xl font-bold shadow-md flex items-center justify-center gap-2"
+                >
+                  <Plus size={20} /> వీడియోను జోడించు
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Videos List */}
+          <div className="space-y-4">
+            {videos.map(video => (
+              <div key={video.id} className="bg-white p-4 rounded-2xl border border-black/5 shadow-sm flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-8 bg-stone-100 rounded flex items-center justify-center">
+                    <Video size={16} className="text-stone-400" />
+                  </div>
+                  <span className="font-bold text-stone-700 text-sm">{video.title}</span>
+                </div>
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => setEditingVideo(video)}
+                    className="text-blue-500 font-bold text-sm"
+                  >
+                    సవరించు
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteVideo(video.id)}
+                    className="text-rose-500 font-bold text-sm"
+                  >
+                    తొలగించు
+                  </button>
+                </div>
+              </div>
+            ))}
+            {videos.length === 0 && (
+              <p className="text-center text-stone-400 text-xs py-10 italic">No videos added yet.</p>
+            )}
           </div>
         </div>
       )}
@@ -1332,6 +1516,92 @@ function HandbookScreen({ onNavigate, categories }: { onNavigate: (s: Screen) =>
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function VideosScreen({ videos }: { videos: VideoItem[] }) {
+  const [playingVideo, setPlayingVideo] = useState<VideoItem | null>(null);
+
+  return (
+    <div className="p-4 space-y-6 pb-20">
+      <h2 className="text-xl font-bold text-[#1b7d36] mb-8">వీడియోలు</h2>
+      
+      <div className="grid grid-cols-1 gap-6">
+        {videos.map((video) => (
+          <div key={video.id} className="bg-white rounded-[32px] border border-black/5 shadow-sm overflow-hidden flex flex-col group">
+            <div 
+              className="aspect-video bg-stone-100 relative overflow-hidden cursor-pointer"
+              onClick={() => setPlayingVideo(video)}
+            >
+              {video.thumbnail ? (
+                <img 
+                  src={video.thumbnail} 
+                  alt={video.title} 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                  referrerPolicy="no-referrer" 
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-stone-200">
+                  <Video size={48} className="text-stone-400" />
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/20 flex items-center justify-center group-hover:bg-black/30 transition-colors">
+                <div className="bg-white/90 p-4 rounded-full shadow-lg scale-90 group-hover:scale-100 transition-transform">
+                  <Play size={24} className="text-[#1b7d36] fill-[#1b7d36]" />
+                </div>
+              </div>
+            </div>
+            <div className="p-5 flex justify-between items-center">
+              <h4 className="font-bold text-stone-800 text-sm">{video.title}</h4>
+              <button 
+                onClick={() => setPlayingVideo(video)}
+                className="text-xs font-bold text-[#1b7d36] bg-emerald-50 px-4 py-2 rounded-full"
+              >
+                ప్లే చేయండి
+              </button>
+            </div>
+          </div>
+        ))}
+        {videos.length === 0 && (
+          <div className="text-center text-stone-400 py-20 italic">
+            వీడియోలు ఏవీ లేవు.
+          </div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {playingVideo && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setPlayingVideo(null)}
+              className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-4xl aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl"
+            >
+              <button 
+                onClick={() => setPlayingVideo(null)}
+                className="absolute top-4 right-4 z-10 bg-white/10 hover:bg-white/20 p-2 rounded-full text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+              <iframe 
+                src={getYouTubeEmbedUrl(playingVideo.url)} 
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                allowFullScreen
+              />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
