@@ -166,9 +166,11 @@ export default function App() {
       {/* Header */}
       <header className="bg-[#1b7d36] px-4 py-3 flex items-center justify-between sticky top-0 z-50 text-white shadow-md">
         <div className="flex items-center gap-3">
-          <button onClick={() => setCurrentScreen('home')} className="p-1 hover:bg-white/10 rounded-full transition-colors">
-            <ChevronLeft size={24} />
-          </button>
+          {currentScreen !== 'home' && (
+            <button onClick={() => setCurrentScreen('home')} className="p-1 hover:bg-white/10 rounded-full transition-colors">
+              <ChevronLeft size={24} />
+            </button>
+          )}
           <h1 className="text-xl font-bold tracking-tight">Prakruthi Mithra</h1>
         </div>
         <div className="flex items-center gap-4">
@@ -284,6 +286,39 @@ function BottomNavButton({ icon, label, active, onClick }: { icon: React.ReactNo
 function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => void, calculators: Calculator[] }) {
   const [acres, setAcres] = useState(1);
 
+  const handleShare = async (calc: Calculator) => {
+    const total = (acres * calc.baseRate).toFixed(1);
+    let text = `*${calc.title}*\n`;
+    text += `ఎకరాల సంఖ్య: ${acres}\n`;
+    text += `మొత్తం: ${total} kg\n\n`;
+    
+    calc.rows.forEach(row => {
+      const amount = (acres * row.ratio).toFixed(2);
+      text += `• ${row.label}: ${amount} kg\n`;
+    });
+
+    text += `\nShared via Prakruthi Mithra AI`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: calc.title,
+          text: text,
+        });
+      } catch (err) {
+        console.error('Error sharing:', err);
+      }
+    } else {
+      // Fallback: Copy to clipboard
+      try {
+        await navigator.clipboard.writeText(text);
+        alert('సమాచారం క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది!');
+      } catch (err) {
+        console.error('Error copying:', err);
+      }
+    }
+  };
+
   return (
     <div className="p-4 space-y-6">
       {/* Hero Section */}
@@ -331,7 +366,10 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
         <div key={calc.id} className="space-y-4">
           <div className="flex justify-between items-center px-2">
             <h3 className="text-sm font-bold text-[#1b7d36]">{calc.title}</h3>
-            <button className="p-2 bg-[#f0fdf4] text-[#1b7d36] rounded-full">
+            <button 
+              onClick={() => handleShare(calc)}
+              className="p-2 bg-[#f0fdf4] text-[#1b7d36] rounded-full hover:bg-[#dcfce7] transition-colors"
+            >
               <Share2 size={16} />
             </button>
           </div>
@@ -339,23 +377,12 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
           <div className="bg-white p-8 rounded-[40px] border border-black/5 shadow-sm space-y-8">
             <div className="flex items-center justify-between bg-[#f8f9fa] p-5 rounded-3xl border border-black/5">
               <label className="text-stone-700 font-bold text-xs">ఎకరాల సంఖ్య:</label>
-              <div className="flex items-center gap-4">
-                <button 
-                  onClick={() => setAcres(Math.max(0.5, acres - 0.5))}
-                  className="w-8 h-8 flex items-center justify-center bg-white rounded-full border border-stone-200 text-stone-600 font-bold"
-                >
-                  -
-                </button>
-                <div className="bg-white rounded-2xl px-6 py-2 border border-stone-200 min-w-[80px] text-center font-bold text-xl text-stone-800 shadow-sm">
-                  {acres}
-                </div>
-                <button 
-                  onClick={() => setAcres(acres + 0.5)}
-                  className="w-8 h-8 flex items-center justify-center bg-white rounded-full border border-stone-200 text-stone-600 font-bold"
-                >
-                  +
-                </button>
-              </div>
+              <input 
+                type="number" 
+                value={acres}
+                onChange={e => setAcres(parseFloat(e.target.value) || 0)}
+                className="bg-white rounded-2xl px-4 py-2 border border-stone-200 w-[100px] text-center font-bold text-xl text-stone-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
+              />
             </div>
 
             <div className="space-y-8">
@@ -386,7 +413,7 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
           </div>
           <h3 className="text-lg font-bold text-stone-800">ముఖ్య గమనిక</h3>
         </div>
-        <p className="text-stone-700 text-xs leading-relaxed pr-16">
+        <p className="text-stone-700 text-xs leading-relaxed pr-16 text-justify">
           రసాయన ఎరువుల వాడకం వల్ల నేల సారం తగ్గిపోవడమే కాకుండా, మన ఆరోగ్యానికి కూడా ముప్పు. ప్రకృతి వ్యవసాయం ద్వారా తక్కువ పెట్టుబడితో ఎక్కువ లాభం పొందవచ్చు.
         </p>
         <div className="absolute top-8 right-8 bg-[#f26522] p-3 rounded-full shadow-lg">
