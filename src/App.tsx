@@ -27,6 +27,10 @@ import {
   UserCircle,
   Book,
   Sun,
+  Cloud,
+  CloudRain,
+  CloudSun,
+  Wind,
   Share2,
   AlertTriangle,
   Megaphone
@@ -162,7 +166,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f8f9fa] overflow-hidden font-sans">
+    <div className="h-screen flex flex-col bg-[#f8f9fa] overflow-hidden font-sans">
       {/* Header */}
       <header className="bg-[#1b7d36] px-4 py-3 flex items-center justify-between sticky top-0 z-50 text-white shadow-md">
         <div className="flex items-center gap-3">
@@ -245,7 +249,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Bottom Nav */}
-      <footer className="bg-white border-t border-black/5 px-4 py-2 flex items-center justify-around shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+      <footer className="bg-white border-t border-black/5 px-4 py-2 flex items-center justify-around shadow-[0_-2px_10px_rgba(0,0,0,0.05)] sticky bottom-0 z-50">
         <BottomNavButton 
           icon={<Home size={24} />} 
           label="హోమ్" 
@@ -285,6 +289,60 @@ function BottomNavButton({ icon, label, active, onClick }: { icon: React.ReactNo
 
 function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => void, calculators: Calculator[] }) {
   const [acres, setAcres] = useState(1);
+  const [weather, setWeather] = useState<any>(null);
+  const [forecast, setForecast] = useState<any[]>([]);
+  const [showForecast, setShowForecast] = useState(false);
+  const [loadingWeather, setLoadingWeather] = useState(true);
+
+  useEffect(() => {
+    const fetchWeather = async (lat: number, lon: number) => {
+      try {
+        const response = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=10`
+        );
+        const data = await response.json();
+        setWeather(data.current);
+        
+        const daily = data.daily;
+        const forecastData = daily.time.map((time: string, i: number) => ({
+          date: time,
+          code: daily.weather_code[i],
+          max: daily.temperature_2m_max[i],
+          min: daily.temperature_2m_min[i]
+        }));
+        setForecast(forecastData);
+      } catch (error) {
+        console.error('Error fetching weather:', error);
+      } finally {
+        setLoadingWeather(false);
+      }
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => fetchWeather(pos.coords.latitude, pos.coords.longitude),
+        () => fetchWeather(16.5062, 80.6480) // Default to Vijayawada if denied
+      );
+    } else {
+      fetchWeather(16.5062, 80.6480);
+    }
+  }, []);
+
+  const getWeatherIcon = (code: number, size = 24) => {
+    if (code === 0) return <Sun className="text-amber-400" size={size} />;
+    if (code <= 3) return <CloudSun className="text-stone-400" size={size} />;
+    if (code <= 48) return <Cloud className="text-stone-400" size={size} />;
+    if (code <= 67) return <CloudRain className="text-blue-400" size={size} />;
+    return <CloudRain className="text-blue-500" size={size} />;
+  };
+
+  const getWeatherText = (code: number) => {
+    if (code === 0) return 'Sunny';
+    if (code <= 3) return 'Partly Cloudy';
+    if (code <= 48) return 'Cloudy';
+    if (code <= 67) return 'Rainy';
+    return 'Stormy';
+  };
 
   const handleShare = async (calc: Calculator) => {
     const total = (acres * calc.baseRate).toFixed(1);
@@ -324,13 +382,13 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
       {/* Hero Section */}
       <section className="bg-[#1b7d36] text-white p-8 rounded-[40px] shadow-lg relative overflow-hidden">
         <div className="relative z-10">
-          <h2 className="text-lg font-bold mb-3">శుభోదయం రైతు సోదరా!</h2>
-          <p className="opacity-90 mb-8 text-xs leading-relaxed max-w-[280px]">
+          <h2 className="text-xl font-bold mb-3">శుభోదయం రైతు సోదరా!</h2>
+          <p className="opacity-90 mb-8 text-sm leading-relaxed max-w-[280px]">
             APCNF ప్రకృతి వ్యవసాయంతో భూమిని రక్షించండి, ఆరోగ్యాన్ని కాపాడండి.
           </p>
           <button 
             onClick={() => onNavigate('chat')}
-            className="bg-white text-stone-800 px-10 py-3.5 rounded-full font-bold shadow-md hover:scale-105 transition-transform text-xs"
+            className="bg-white text-stone-800 px-10 py-3.5 rounded-full font-bold shadow-md hover:scale-105 transition-transform text-sm"
           >
             AI తో మాట్లాడండి
           </button>
@@ -342,30 +400,70 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
 
       {/* Weather Section */}
       <div className="space-y-4">
-        <h3 className="text-sm font-bold text-stone-800 px-2">రోజువారీ వాతావరణ సమాచారం</h3>
+        <h3 className="text-base font-bold text-stone-800 px-2">రోజువారీ వాతావరణ సమాచారం</h3>
         <div className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm flex items-center justify-between">
-          <div className="space-y-1">
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-stone-800">32°C</span>
+          {loadingWeather ? (
+            <div className="w-full flex justify-center py-4">
+              <div className="w-6 h-6 border-2 border-[#1b7d36] border-t-transparent rounded-full animate-spin" />
             </div>
-            <p className="text-stone-500 font-medium text-xs">Sunny</p>
-          </div>
-          <div className="flex flex-col items-center">
-            <Sun className="text-amber-400 w-10 h-10" />
-          </div>
-          <div className="text-right space-y-1">
-            <p className="text-xs text-stone-400">తేమ: 65%</p>
-            <p className="text-xs text-emerald-600 font-bold">✓ Good for natural farming</p>
-            <button className="text-xs text-stone-300 italic underline">Click to see 10-day report</button>
-          </div>
+          ) : (
+            <>
+              <div className="space-y-1">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xl font-bold text-stone-800">{weather?.temperature_2m}°C</span>
+                </div>
+                <p className="text-stone-500 font-medium text-sm">{getWeatherText(weather?.weather_code)}</p>
+              </div>
+              <div className="flex flex-col items-center">
+                {getWeatherIcon(weather?.weather_code, 40)}
+              </div>
+              <div className="text-right space-y-1">
+                <p className="text-sm text-stone-400">తేమ: {weather?.relative_humidity_2m}%</p>
+                <p className="text-sm text-emerald-600 font-bold">✓ Good for natural farming</p>
+                <button 
+                  onClick={() => setShowForecast(true)}
+                  className="text-sm text-stone-300 italic underline"
+                >
+                  Click to see 10-day report
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Forecast Modal */}
+      <AnimatePresence>
+        {showForecast && (
+          <Modal title="10 రోజుల వాతావరణ నివేదిక" onClose={() => setShowForecast(false)}>
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+              {forecast.map((day, i) => (
+                <div key={i} className="flex items-center justify-between p-3 bg-stone-50 rounded-2xl border border-black/5">
+                  <div className="w-24">
+                    <p className="text-sm font-bold text-stone-800">
+                      {i === 0 ? 'Today' : new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-1 justify-center">
+                    {getWeatherIcon(day.code, 20)}
+                    <span className="text-xs text-stone-500">{getWeatherText(day.code)}</span>
+                  </div>
+                  <div className="w-24 text-right">
+                    <span className="text-sm font-bold text-stone-800">{day.max}°</span>
+                    <span className="text-xs text-stone-400 ml-1">/ {day.min}°</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Modal>
+        )}
+      </AnimatePresence>
 
       {/* Calculators Section */}
       {calculators.map(calc => (
         <div key={calc.id} className="space-y-4">
           <div className="flex justify-between items-center px-2">
-            <h3 className="text-sm font-bold text-[#1b7d36]">{calc.title}</h3>
+            <h3 className="text-base font-bold text-[#1b7d36]">{calc.title}</h3>
             <button 
               onClick={() => handleShare(calc)}
               className="p-2 bg-[#f0fdf4] text-[#1b7d36] rounded-full hover:bg-[#dcfce7] transition-colors"
@@ -375,27 +473,27 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
           </div>
           
           <div className="bg-white p-8 rounded-[40px] border border-black/5 shadow-sm space-y-8">
-            <div className="flex items-center justify-between bg-[#f8f9fa] p-5 rounded-3xl border border-black/5">
-              <label className="text-stone-700 font-bold text-xs">ఎకరాల సంఖ్య:</label>
+            <div className="flex items-center justify-between bg-[#1b7d36] p-5 rounded-3xl border border-black/5">
+              <label className="text-white font-bold text-sm">ఎకరాల సంఖ్య:</label>
               <input 
                 type="number" 
                 value={acres}
                 onChange={e => setAcres(parseFloat(e.target.value) || 0)}
-                className="bg-white rounded-2xl px-4 py-2 border border-stone-200 w-[100px] text-center font-bold text-xl text-stone-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
+                className="bg-white text-[#1b7d36] rounded-2xl px-4 py-2 border border-[#1b7d36] w-[100px] text-center font-bold text-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
               />
             </div>
 
             <div className="space-y-8">
               <div className="flex justify-between items-center border-b border-stone-50 pb-4">
-                <p className="text-stone-600 font-bold text-xs">మొత్తం (per acre):</p>
-                <p className="text-2xl font-bold text-[#1b7d36]">{(acres * calc.baseRate).toFixed(1)} kg</p>
+                <p className="text-stone-600 font-bold text-sm">మొత్తం (per acre):</p>
+                <p className="text-xl font-bold text-[#1b7d36]">{(acres * calc.baseRate).toFixed(1)} kg</p>
               </div>
 
               {calc.rows.map(row => (
                 <div key={row.id} className="flex justify-between items-start">
                   <div className="space-y-1">
-                    <p className="text-[#1b7d36] font-bold text-xs">{row.label}</p>
-                    <p className="text-xs text-stone-400">{row.sublabel}</p>
+                    <p className="text-[#1b7d36] font-bold text-sm">{row.label}</p>
+                    <p className="text-sm text-stone-400">{row.sublabel}</p>
                   </div>
                   <p className="font-bold text-stone-700 text-sm">{(acres * row.ratio).toFixed(2)} kg</p>
                 </div>
@@ -411,9 +509,9 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
           <div className="bg-orange-100 p-2 rounded-xl">
             <AlertTriangle className="text-orange-600 w-5 h-5" />
           </div>
-          <h3 className="text-lg font-bold text-stone-800">ముఖ్య గమనిక</h3>
+          <h3 className="text-base font-bold text-stone-800">ముఖ్య గమనిక</h3>
         </div>
-        <p className="text-stone-700 text-xs leading-relaxed pr-16 text-justify">
+        <p className="text-stone-700 text-sm leading-relaxed pr-16 text-justify">
           రసాయన ఎరువుల వాడకం వల్ల నేల సారం తగ్గిపోవడమే కాకుండా, మన ఆరోగ్యానికి కూడా ముప్పు. ప్రకృతి వ్యవసాయం ద్వారా తక్కువ పెట్టుబడితో ఎక్కువ లాభం పొందవచ్చు.
         </p>
         <div className="absolute top-8 right-8 bg-[#f26522] p-3 rounded-full shadow-lg">
@@ -434,8 +532,8 @@ function HomeCard({ icon, title, desc, onClick }: { icon: React.ReactNode, title
         {icon}
       </div>
       <div>
-        <h4 className="font-bold text-stone-900 text-xs">{title}</h4>
-        <p className="text-xs text-stone-500">{desc}</p>
+        <h4 className="font-bold text-stone-900 text-sm">{title}</h4>
+        <p className="text-sm text-stone-500">{desc}</p>
       </div>
     </button>
   );
@@ -581,7 +679,7 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
   return (
     <div className="p-4 space-y-6 pb-20">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold text-[#1b7d36]">అడ్మిన్ ప్యానెల్</h2>
+        <h2 className="text-xl font-bold text-[#1b7d36]">అడ్మిన్ ప్యానెల్</h2>
         <button onClick={onLogout} className="text-rose-500 font-bold hover:opacity-80 transition-opacity">
           Logout
         </button>
@@ -666,7 +764,7 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
               <div key={cat.id} className="space-y-4 bg-stone-50/50 p-4 rounded-[40px] border border-black/5">
                 <div className="flex flex-col gap-2 px-2">
                   <div className="flex justify-between items-center">
-                    <h4 className="text-xl font-bold text-[#1b7d36]">{cat.name}</h4>
+                    <h4 className="text-base font-bold text-[#1b7d36]">{cat.name}</h4>
                     <div className="flex gap-4">
                       <button 
                         onClick={() => setEditingCategory(cat)}
@@ -950,7 +1048,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           <div className="bg-[#f0fdf4] w-16 h-16 rounded-full flex items-center justify-center mx-auto">
             <ShieldCheck className="text-[#1b7d36]" size={32} />
           </div>
-          <h2 className="text-2xl font-bold text-stone-800">Admin Login</h2>
+          <h2 className="text-xl font-bold text-stone-800">Admin Login</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -992,7 +1090,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
 function CropsScreen({ onSelectCrop }: { onSelectCrop: (c: Crop) => void }) {
   return (
     <div className="p-4 space-y-4">
-      <h2 className="text-2xl font-bold text-[#1b7d36] mb-4">పంటల సమాచారం</h2>
+      <h2 className="text-xl font-bold text-[#1b7d36] mb-4">పంటల సమాచారం</h2>
       <div className="space-y-3">
         {CROPS.map(crop => (
           <button 
@@ -1005,7 +1103,7 @@ function CropsScreen({ onSelectCrop }: { onSelectCrop: (c: Crop) => void }) {
                 <Sprout className="text-[#1b7d36]" />
               </div>
               <div className="text-left">
-                <h4 className="font-bold text-lg">{crop.teluguName}</h4>
+                <h4 className="font-bold text-base">{crop.teluguName}</h4>
                 <p className="text-sm text-stone-500">{crop.name}</p>
               </div>
             </div>
@@ -1020,7 +1118,7 @@ function CropsScreen({ onSelectCrop }: { onSelectCrop: (c: Crop) => void }) {
 function InputsScreen({ onSelectInput }: { onSelectInput: (i: NaturalInput) => void }) {
   return (
     <div className="p-4 space-y-4">
-      <h2 className="text-2xl font-bold text-[#1b7d36] mb-4">ప్రకృతి కషాయాలు</h2>
+      <h2 className="text-xl font-bold text-[#1b7d36] mb-4">ప్రకృతి కషాయాలు</h2>
       <div className="grid grid-cols-1 gap-3">
         {NATURAL_INPUTS.map(input => (
           <button 
@@ -1032,7 +1130,7 @@ function InputsScreen({ onSelectInput }: { onSelectInput: (i: NaturalInput) => v
               <Droplets className="text-[#1b7d36]" />
             </div>
             <div className="text-left flex-1">
-              <h4 className="font-bold text-lg">{input.teluguName}</h4>
+              <h4 className="font-bold text-base">{input.teluguName}</h4>
               <p className="text-sm text-stone-500 truncate max-w-[200px]">{input.usage}</p>
             </div>
             <ChevronRight className="text-stone-300 group-hover:translate-x-1 transition-transform" />
@@ -1143,12 +1241,12 @@ function HandbookScreen({ onNavigate, categories }: { onNavigate: (s: Screen) =>
             <img src={selectedItem.image} alt={selectedItem.name} className="w-full aspect-video object-cover" referrerPolicy="no-referrer" />
           )}
           <div className="p-8 space-y-6">
-            <h2 className="text-3xl font-bold text-[#1b7d36]">{selectedItem.name}</h2>
+            <h2 className="text-xl font-bold text-[#1b7d36]">{selectedItem.name}</h2>
             
             <div className="space-y-8">
               {selectedItem.sections.map((section) => (
                 <div key={section.id} className="space-y-2">
-                  <h4 className="text-xl font-bold text-stone-800 border-l-4 border-[#1b7d36] pl-3">{section.title}</h4>
+                  <h4 className="text-base font-bold text-stone-800 border-l-4 border-[#1b7d36] pl-3">{section.title}</h4>
                   <div className="text-stone-600 leading-relaxed pl-4">
                     {section.content}
                   </div>
@@ -1181,7 +1279,7 @@ function HandbookScreen({ onNavigate, categories }: { onNavigate: (s: Screen) =>
           <ChevronLeft size={20} /> వెనుకకు
         </button>
         
-        <h2 className="text-3xl font-bold text-[#1b7d36] mb-8">{selectedCategory.name}</h2>
+        <h2 className="text-xl font-bold text-[#1b7d36] mb-8">{selectedCategory.name}</h2>
         
         <div className="grid grid-cols-2 gap-4">
           {selectedCategory.items.map((item) => (
@@ -1221,7 +1319,7 @@ function HandbookScreen({ onNavigate, categories }: { onNavigate: (s: Screen) =>
 
   return (
     <div className="p-4 space-y-6 pb-20">
-      <h2 className="text-3xl font-bold text-[#1b7d36] mb-8">హ్యాండ్ బుక్</h2>
+      <h2 className="text-xl font-bold text-[#1b7d36] mb-8">హ్యాండ్ బుక్</h2>
       <div className="space-y-4">
         {categories.map((cat) => (
           <button 
