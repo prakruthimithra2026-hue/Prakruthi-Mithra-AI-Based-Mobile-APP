@@ -257,13 +257,13 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
       {/* Hero Section */}
       <section className="bg-[#1b7d36] text-white p-8 rounded-[40px] shadow-lg relative overflow-hidden">
         <div className="relative z-10">
-          <h2 className="text-sm font-bold mb-3">శుభోదయం రైతు సోదరా!</h2>
-          <p className="opacity-90 mb-8 text-[10px] leading-relaxed max-w-[280px] text-justify">
+          <h2 className="text-lg font-bold mb-3">శుభోదయం రైతు సోదరా!</h2>
+          <p className="opacity-90 mb-8 text-xs leading-relaxed max-w-[280px] text-justify">
             APCNF ప్రకృతి వ్యవసాయంతో భూమిని రక్షించండి, ఆరోగ్యాన్ని కాపాడండి.
           </p>
           <button 
             onClick={() => onNavigate('chat')}
-            className="bg-white text-stone-800 px-10 py-3.5 rounded-full font-bold shadow-md hover:scale-105 transition-transform text-[10px]"
+            className="bg-white text-stone-800 px-10 py-3.5 rounded-full font-bold shadow-md hover:scale-105 transition-transform text-xs"
           >
             AI తో మాట్లాడండి
           </button>
@@ -281,15 +281,15 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
             <div className="flex items-baseline gap-1">
               <span className="text-2xl font-bold text-stone-800">32°C</span>
             </div>
-            <p className="text-stone-500 font-medium text-[10px]">Sunny</p>
+            <p className="text-stone-500 font-medium text-xs">Sunny</p>
           </div>
           <div className="flex flex-col items-center">
             <Sun className="text-amber-400 w-10 h-10" />
           </div>
           <div className="text-right space-y-1">
-            <p className="text-[10px] text-stone-400">తేమ: 65%</p>
-            <p className="text-[10px] text-emerald-600 font-bold">✓ Good for natural farming</p>
-            <button className="text-[10px] text-stone-300 italic underline">Click to see 10-day report</button>
+            <p className="text-xs text-stone-400">తేమ: 65%</p>
+            <p className="text-xs text-emerald-600 font-bold">✓ Good for natural farming</p>
+            <button className="text-xs text-stone-300 italic underline">Click to see 10-day report</button>
           </div>
         </div>
       </div>
@@ -320,7 +320,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <p className="text-[#1b7d36] font-bold text-xs">ధాన్యాలు (Cereals)</p>
-                <p className="text-[10px] text-stone-400 text-justify">సజ్జలు, జొన్నలు, రాగులు, కొర్రలు, ఆరికలు</p>
+                <p className="text-xs text-stone-400 text-justify">సజ్జలు, జొన్నలు, రాగులు, కొర్రలు, ఆరికలు</p>
               </div>
               <p className="font-bold text-stone-700 text-sm">{(acres * 3.9).toFixed(2)} kg</p>
             </div>
@@ -328,7 +328,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <p className="text-[#1b7d36] font-bold text-xs">పప్పు దినుసులు (Pulses)</p>
-                <p className="text-[10px] text-stone-400 text-justify">కందులు, పెసలు, మినుములు, అలసందలు, శనగలు</p>
+                <p className="text-xs text-stone-400 text-justify">కందులు, పెసలు, మినుములు, అలసందలు, శనగలు</p>
               </div>
               <p className="font-bold text-stone-700 text-sm">{(acres * 3.9).toFixed(2)} kg</p>
             </div>
@@ -336,7 +336,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <p className="text-[#1b7d36] font-bold text-xs">నూనె గింజలు (Oil Seeds)</p>
-                <p className="text-[10px] text-stone-400 text-justify">వేరుశనగ, నువ్వులు, కుసుమలు, ఆముదాలు, ఆవాలు</p>
+                <p className="text-xs text-stone-400 text-justify">వేరుశనగ, నువ్వులు, కుసుమలు, ఆముదాలు, ఆవాలు</p>
               </div>
               <p className="font-bold text-stone-700 text-sm">{(acres * 2.6).toFixed(2)} kg</p>
             </div>
@@ -344,7 +344,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <p className="text-[#1b7d36] font-bold text-xs">పశుగ్రాసం (Fodder)</p>
-                <p className="text-[10px] text-stone-400 text-justify">పిల్లిపెసర, అలసంద, గడ్డి రకాలు</p>
+                <p className="text-xs text-stone-400 text-justify">పిల్లిపెసర, అలసంద, గడ్డి రకాలు</p>
               </div>
               <p className="font-bold text-stone-700 text-sm">{(acres * 1.3).toFixed(2)} kg</p>
             </div>
@@ -352,7 +352,7 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <p className="text-[#1b7d36] font-bold text-xs">కూరగాయలు (Vegetables)</p>
-                <p className="text-[10px] text-stone-400 text-justify">బెండ, గోరుచిక్కుడు, సొరకాయ, టమోటా</p>
+                <p className="text-xs text-stone-400 text-justify">బెండ, గోరుచిక్కుడు, సొరకాయ, టమోటా</p>
               </div>
               <p className="font-bold text-stone-700 text-sm">{(acres * 1.3).toFixed(2)} kg</p>
             </div>
@@ -366,9 +366,9 @@ function HomeScreen({ onNavigate }: { onNavigate: (s: Screen) => void }) {
           <div className="bg-orange-100 p-2 rounded-xl">
             <AlertTriangle className="text-orange-600 w-5 h-5" />
           </div>
-          <h3 className="text-sm font-bold text-stone-800">ముఖ్య గమనిక</h3>
+          <h3 className="text-lg font-bold text-stone-800">ముఖ్య గమనిక</h3>
         </div>
-        <p className="text-stone-700 text-[10px] leading-relaxed pr-16 text-justify">
+        <p className="text-stone-700 text-xs leading-relaxed pr-16 text-justify">
           రసాయన ఎరువుల వాడకం వల్ల నేల సారం తగ్గిపోవడమే కాకుండా, మన ఆరోగ్యానికి కూడా ముప్పు. ప్రకృతి వ్యవసాయం ద్వారా తక్కువ పెట్టుబడితో ఎక్కువ లాభం పొందవచ్చు.
         </p>
         <div className="absolute top-8 right-8 bg-[#f26522] p-3 rounded-full shadow-lg">
@@ -389,8 +389,8 @@ function HomeCard({ icon, title, desc, onClick }: { icon: React.ReactNode, title
         {icon}
       </div>
       <div>
-        <h4 className="font-bold text-stone-900 text-sm">{title}</h4>
-        <p className="text-[10px] text-stone-500">{desc}</p>
+        <h4 className="font-bold text-stone-900 text-xs">{title}</h4>
+        <p className="text-xs text-stone-500">{desc}</p>
       </div>
     </button>
   );
