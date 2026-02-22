@@ -209,7 +209,10 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser && !currentUser.emailVerified) {
+      // Bypass verification for admin email
+      const isAdmin = currentUser?.email === 'prakruthimithra2026@gmail.com';
+      
+      if (currentUser && !currentUser.emailVerified && !isAdmin) {
         // If user is logged in but not verified, sign them out
         signOut(auth);
         setUser(null);
@@ -1553,7 +1556,9 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         setVerificationEmail(email);
       } else {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        if (!userCredential.user.emailVerified) {
+        const isAdmin = userCredential.user.email === 'prakruthimithra2026@gmail.com';
+        
+        if (!userCredential.user.emailVerified && !isAdmin) {
           const userEmail = userCredential.user.email;
           await signOut(auth);
           setVerificationEmail(userEmail);
