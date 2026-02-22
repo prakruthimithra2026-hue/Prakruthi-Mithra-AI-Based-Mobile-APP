@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -41,5 +41,28 @@ export const chatWithPrakritiMitra = async (message: string, history: { role: st
   } catch (error) {
     console.error("Error calling Gemini API:", error);
     return "క్షమించండి, సమాధానం ఇవ్వడంలో సమస్య ఏర్పడింది. దయచేసి మళ్ళీ ప్రయత్నించండి.";
+  }
+};
+
+export const generateSpeech = async (text: string) => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Kore' },
+          },
+        },
+      },
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    return base64Audio;
+  } catch (error) {
+    console.error("Error generating speech:", error);
+    return null;
   }
 };

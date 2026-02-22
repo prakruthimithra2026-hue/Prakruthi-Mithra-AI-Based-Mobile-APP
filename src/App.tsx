@@ -35,10 +35,13 @@ import {
   Play,
   Share2,
   AlertTriangle,
-  Megaphone
+  Megaphone,
+  Volume2,
+  VolumeX,
+  Loader2
 } from 'lucide-react';
 import { CROPS, NATURAL_INPUTS, Crop, NaturalInput } from './data';
-import { chatWithPrakritiMitra } from './services/geminiService';
+import { chatWithPrakritiMitra, generateSpeech } from './services/geminiService';
 import ReactMarkdown from 'react-markdown';
 
 type Screen = 'home' | 'crops' | 'inputs' | 'chat' | 'handbook' | 'admin' | 'videos';
@@ -332,6 +335,81 @@ function BottomNavButton({ icon, label, active, onClick }: { icon: React.ReactNo
   );
 }
 
+function TTSButton({ text }: { text: string }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+
+  const handleSpeak = async () => {
+    if (isPlaying) {
+      sourceNodeRef.current?.stop();
+      setIsPlaying(false);
+      return;
+    }
+
+    setIsLoading(true);
+    const base64Audio = await generateSpeech(text);
+    setIsLoading(false);
+
+    if (base64Audio) {
+      try {
+        if (!audioCtxRef.current) {
+          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        
+        const audioCtx = audioCtxRef.current;
+        const binaryString = window.atob(base64Audio);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        // Gemini TTS returns 16-bit PCM, 24000Hz
+        const pcm16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(pcm16.length);
+        for (let i = 0; i < pcm16.length; i++) {
+          float32[i] = pcm16[i] / 32768.0;
+        }
+
+        const audioBuffer = audioCtx.createBuffer(1, float32.length, 24000);
+        audioBuffer.getChannelData(0).set(float32);
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioCtx.destination);
+        source.onended = () => setIsPlaying(false);
+        source.start();
+        
+        sourceNodeRef.current = source;
+        setIsPlaying(true);
+      } catch (err) {
+        console.error("Error playing audio:", err);
+        setIsPlaying(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      sourceNodeRef.current?.stop();
+      audioCtxRef.current?.close();
+    };
+  }, []);
+
+  return (
+    <button 
+      onClick={handleSpeak}
+      disabled={isLoading}
+      className="p-1.5 hover:bg-black/5 rounded-full transition-colors text-inherit opacity-70 hover:opacity-100"
+      title="చదవండి (Read Aloud)"
+    >
+      {isLoading ? <Loader2 size={16} className="animate-spin" /> : isPlaying ? <VolumeX size={16} /> : <Volume2 size={16} />}
+    </button>
+  );
+}
+
 function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => void, calculators: Calculator[] }) {
   const [acres, setAcres] = useState(1);
   const [weather, setWeather] = useState<any>(null);
@@ -604,7 +682,19 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
   // Video management state
   const [newVideoTitle, setNewVideoTitle] = useState('');
   const [newVideoUrl, setNewVideoUrl] = useState('');
+  const [newVideoThumbnail, setNewVideoThumbnail] = useState('');
   const [editingVideo, setEditingVideo] = useState<VideoItem | null>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        callback(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleReset = () => {
     if (confirm('Are you sure you want to reset all data?')) {
@@ -620,11 +710,12 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
       id: Date.now().toString(),
       title: newVideoTitle,
       url: getYouTubeEmbedUrl(newVideoUrl),
-      thumbnail: `https://picsum.photos/seed/${Date.now()}/800/400`
+      thumbnail: newVideoThumbnail.trim() || `https://picsum.photos/seed/${Date.now()}/800/400`
     };
     setVideos(prev => [...prev, newVideo]);
     setNewVideoTitle('');
     setNewVideoUrl('');
+    setNewVideoThumbnail('');
   };
 
   const handleDeleteVideo = (id: string) => {
@@ -986,6 +1077,24 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
                   placeholder="వీడియో లింక్ (YouTube Embed URL)"
                   className="w-full bg-white border border-blue-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-blue-400 uppercase">Thumbnail Image</label>
+                  <div className="flex items-center gap-4">
+                    {editingVideo.thumbnail && (
+                      <img src={editingVideo.thumbnail} className="w-20 h-12 object-cover rounded-lg border border-blue-200" referrerPolicy="no-referrer" />
+                    )}
+                    <label className="flex-1 cursor-pointer bg-white border-2 border-dashed border-blue-200 rounded-2xl p-4 flex flex-col items-center justify-center hover:border-blue-400 transition-colors">
+                      <Upload size={20} className="text-blue-400 mb-1" />
+                      <span className="text-xs font-bold text-blue-500">Upload Thumbnail</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={e => handleFileUpload(e, (base64) => setEditingVideo({ ...editingVideo, thumbnail: base64 }))} 
+                      />
+                    </label>
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <button 
                     onClick={handleSaveVideo}
@@ -1023,6 +1132,24 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
                   placeholder="వీడియో లింక్ (YouTube Embed URL)"
                   className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
                 />
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-stone-400 uppercase">Thumbnail Image</label>
+                  <div className="flex items-center gap-4">
+                    {newVideoThumbnail && (
+                      <img src={newVideoThumbnail} className="w-20 h-12 object-cover rounded-lg border border-stone-200" referrerPolicy="no-referrer" />
+                    )}
+                    <label className="flex-1 cursor-pointer bg-[#f8f9fa] border-2 border-dashed border-stone-200 rounded-2xl p-4 flex flex-col items-center justify-center hover:border-[#1b7d36] transition-colors">
+                      <Upload size={20} className="text-stone-400 mb-1" />
+                      <span className="text-xs font-bold text-stone-500">Upload Thumbnail</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={e => handleFileUpload(e, (base64) => setNewVideoThumbnail(base64))} 
+                      />
+                    </label>
+                  </div>
+                </div>
                 <button 
                   onClick={handleAddVideo}
                   className="w-full bg-[#1b7d36] text-white py-3 rounded-2xl font-bold shadow-md flex items-center justify-center gap-2"
@@ -1100,10 +1227,14 @@ function ItemEditor({ catId, item, onSave, onCancel }: {
     });
   };
 
-  const handleChangeImage = () => {
-    const newUrl = prompt('Enter new image URL (or leave empty for random):', editedItem.image);
-    if (newUrl !== null) {
-      setEditedItem({ ...editedItem, image: newUrl || `https://picsum.photos/seed/${Date.now()}/800/400` });
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditedItem({ ...editedItem, image: reader.result as string });
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -1128,25 +1259,30 @@ function ItemEditor({ catId, item, onSave, onCancel }: {
         </div>
 
         <div className="space-y-2">
-          <label className="text-[#1b7d36] font-bold text-sm block">మీడియా</label>
-          <div className="relative rounded-2xl overflow-hidden border border-stone-200 aspect-video bg-stone-100 group">
+          <label className="text-[#1b7d36] font-bold text-sm block">మీడియా (Image)</label>
+          <div className="flex items-center gap-4 mb-2">
+            <label className="flex-1 cursor-pointer bg-[#f8f9fa] border-2 border-dashed border-stone-200 rounded-2xl p-4 flex flex-col items-center justify-center hover:border-[#1b7d36] transition-colors">
+              <Upload size={24} className="text-stone-400 mb-1" />
+              <span className="text-sm font-bold text-stone-500">Upload Image</span>
+              <input 
+                type="file" 
+                accept="image/*" 
+                className="hidden" 
+                onChange={handleFileUpload} 
+              />
+            </label>
+          </div>
+          <div className="relative rounded-2xl overflow-hidden border border-stone-200 aspect-video bg-stone-100">
             {editedItem.image ? (
               <img src={editedItem.image} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-stone-400">No Image</div>
             )}
-            <button 
-              onClick={handleChangeImage}
-              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white gap-2"
-            >
-              <Upload size={32} />
-              <span className="font-bold">Change Image</span>
-            </button>
           </div>
           {editedItem.image && (
             <button 
               onClick={() => setEditedItem({ ...editedItem, image: undefined })}
-              className="text-rose-500 text-xs font-bold"
+              className="text-rose-500 text-xs font-bold mt-2"
             >
               Remove Image
             </button>
@@ -1365,9 +1501,12 @@ function ChatScreen() {
         )}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${m.role === 'user' ? 'bg-[#1b7d36] text-white rounded-tr-none' : 'bg-white text-stone-800 rounded-tl-none border border-black/5'}`}>
+            <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm relative group ${m.role === 'user' ? 'bg-[#1b7d36] text-white rounded-tr-none' : 'bg-white text-stone-800 rounded-tl-none border border-black/5'}`}>
               <div className="prose prose-sm prose-stone max-w-none">
                 <ReactMarkdown>{m.parts[0].text}</ReactMarkdown>
+              </div>
+              <div className={`flex justify-end mt-1 border-t border-black/5 pt-1 opacity-60`}>
+                <TTSButton text={m.parts[0].text} />
               </div>
             </div>
           </div>
@@ -1425,7 +1564,10 @@ function HandbookScreen({ onNavigate, categories }: { onNavigate: (s: Screen) =>
             <img src={selectedItem.image} alt={selectedItem.name} className="w-full aspect-video object-cover" referrerPolicy="no-referrer" />
           )}
           <div className="p-8 space-y-6">
-            <h2 className="text-xl font-bold text-[#1b7d36]">{selectedItem.name}</h2>
+            <div className="flex justify-between items-start">
+              <h2 className="text-xl font-bold text-[#1b7d36]">{selectedItem.name}</h2>
+              <TTSButton text={`${selectedItem.name}. ${selectedItem.sections.map(s => `${s.title}. ${s.content}`).join('. ')}`} />
+            </div>
             
             <div className="space-y-8">
               {selectedItem.sections.map((section) => (
