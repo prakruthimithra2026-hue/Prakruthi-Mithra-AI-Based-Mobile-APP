@@ -43,7 +43,8 @@ import {
   Image as ImageIcon,
   Mic,
   MicOff,
-  Paperclip
+  Paperclip,
+  Mail
 } from 'lucide-react';
 import { CROPS, NATURAL_INPUTS, Crop, NaturalInput } from './data';
 import { chatWithPrakritiMitra, generateSpeech } from './services/geminiService';
@@ -54,6 +55,8 @@ import {
   createUserWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
+  sendEmailVerification,
+  sendPasswordResetEmail,
   User
 } from 'firebase/auth';
 import { 
@@ -206,11 +209,18 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        setIsAdminLoggedIn(true);
-      } else {
+      if (currentUser && !currentUser.emailVerified) {
+        // If user is logged in but not verified, sign them out
+        signOut(auth);
+        setUser(null);
         setIsAdminLoggedIn(false);
+      } else {
+        setUser(currentUser);
+        if (currentUser) {
+          setIsAdminLoggedIn(true);
+        } else {
+          setIsAdminLoggedIn(false);
+        }
       }
     });
     return () => unsubscribe();
@@ -1519,31 +1529,49 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
 
     try {
-      if (isSignUp) {
-        await createUserWithEmailAndPassword(auth, email, password);
+      if (isForgotPassword) {
+        await sendPasswordResetEmail(auth, email);
+        setSuccess('పాస్‌వర్డ్ రీసెట్ లింక్ మీ ఈమెయిల్‌కు పంపబడింది. (Password reset link sent to your email)');
+        setIsForgotPassword(false);
+      } else if (isSignUp) {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await sendEmailVerification(userCredential.user);
+        await signOut(auth); // Sign out immediately as per requirement
+        setVerificationEmail(email);
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        if (!userCredential.user.emailVerified) {
+          const userEmail = userCredential.user.email;
+          await signOut(auth);
+          setVerificationEmail(userEmail);
+          return;
+        }
+        onLogin();
       }
-      onLogin();
     } catch (err: any) {
       console.error("Auth error", err);
       const errorCode = err.code;
       
       if (errorCode === 'auth/email-already-in-use') {
         setError('ఈ ఈమెయిల్ ఇప్పటికే రిజిస్టర్ అయి ఉంది. దయచేసి లాగిన్ అవ్వండి. (User already exists. Please sign in)');
+      } else if (errorCode === 'auth/user-not-found') {
+        setError('ఈ ఈమెయిల్ తో ఎటువంటి ఖాతా లేదు. (No account found with this email)');
       } else if (
         errorCode === 'auth/invalid-credential' || 
         errorCode === 'auth/invalid-login-credentials' ||
-        errorCode === 'auth/user-not-found' || 
         errorCode === 'auth/wrong-password'
       ) {
         setError('ఈమెయిల్ లేదా పాస్‌వర్డ్ తప్పుగా ఉంది. (Email or password is incorrect)');
@@ -1552,11 +1580,41 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
       } else if (errorCode === 'auth/invalid-email') {
         setError('సరైన ఈమెయిల్ అడ్రస్ ఇవ్వండి. (Please enter a valid email)');
       } else {
-        setError('లాగిన్ చేయడంలో సమస్య ఏర్పడింది. దయచేసి మళ్ళీ ప్రయత్నించండి.');
+        setError('సమస్య ఏర్పడింది. దయచేసి మళ్ళీ ప్రయత్నించండి.');
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  if (verificationEmail) {
+    return (
+      <div className="p-4 flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="bg-white p-8 rounded-[40px] border border-black/5 shadow-lg w-full max-w-md space-y-6 text-center">
+          <div className="bg-[#f0fdf4] w-16 h-16 rounded-full flex items-center justify-center mx-auto">
+            <Mail className="text-[#1b7d36]" size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-stone-800">Verify Your Email</h2>
+          <p className="text-stone-600">
+            We have sent you a verification email to <span className="font-bold">{verificationEmail}</span>. Please verify it and log in.
+          </p>
+          <button 
+            onClick={() => {
+              setVerificationEmail(null);
+              setIsSignUp(false);
+            }}
+            className="w-full bg-[#1b7d36] text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-[#16652b] transition-colors"
+          >
+            Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const getTitle = () => {
+    if (isForgotPassword) return 'Forgot Password';
+    return isSignUp ? 'Sign Up' : 'Login';
   };
 
   return (
@@ -1566,7 +1624,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           <div className="bg-[#f0fdf4] w-16 h-16 rounded-full flex items-center justify-center mx-auto">
             <UserCircle className="text-[#1b7d36]" size={32} />
           </div>
-          <h2 className="text-xl font-bold text-stone-800">{isSignUp ? 'Sign Up' : 'Login'}</h2>
+          <h2 className="text-xl font-bold text-stone-800">{getTitle()}</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1581,33 +1639,53 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
               required
             />
           </div>
-          <div className="space-y-1">
-            <label className="text-sm font-bold text-stone-600 ml-1">Password</label>
-            <input 
-              type="password" 
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
-              placeholder="••••••••"
-              required
-            />
-          </div>
+          {!isForgotPassword && (
+            <div className="space-y-1">
+              <label className="text-sm font-bold text-stone-600 ml-1">Password</label>
+              <input 
+                type="password" 
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
+                placeholder="••••••••"
+                required={!isForgotPassword}
+              />
+            </div>
+          )}
           {error && <p className="text-rose-500 text-xs font-bold text-center">{error}</p>}
+          {success && <p className="text-[#1b7d36] text-xs font-bold text-center">{success}</p>}
           <button 
             type="submit"
             disabled={loading}
             className="w-full bg-[#1b7d36] text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-[#16652b] transition-colors disabled:opacity-50"
           >
-            {loading ? 'Processing...' : (isSignUp ? 'Sign Up' : 'Login')}
+            {loading ? 'Processing...' : (isForgotPassword ? 'Send Reset Link' : (isSignUp ? 'Sign Up' : 'Login'))}
           </button>
         </form>
 
-        <div className="text-center">
+        <div className="flex flex-col gap-3 text-center">
+          {!isForgotPassword && !isSignUp && (
+            <button 
+              onClick={() => { setIsForgotPassword(true); setError(''); setSuccess(''); }}
+              className="text-xs text-stone-400 font-bold hover:text-[#1b7d36] transition-colors"
+            >
+              Forgot Password?
+            </button>
+          )}
+          
           <button 
-            onClick={() => setIsSignUp(!isSignUp)}
+            onClick={() => {
+              if (isForgotPassword) {
+                setIsForgotPassword(false);
+              } else {
+                setIsSignUp(!isSignUp);
+              }
+              setError('');
+              setSuccess('');
+            }}
             className="text-sm text-[#1b7d36] font-bold hover:underline"
           >
-            {isSignUp ? 'Already have an account? Login' : 'Don\'t have an account? Sign Up'}
+            {isForgotPassword ? 'Back to Login' : (isSignUp ? 'Already have an account? Login' : 'Don\'t have an account? Sign Up')}
           </button>
         </div>
       </div>
