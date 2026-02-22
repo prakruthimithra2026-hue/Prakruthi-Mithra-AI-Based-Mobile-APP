@@ -38,11 +38,33 @@ import {
   Megaphone,
   Volume2,
   VolumeX,
-  Loader2
+  Loader2,
+  Camera,
+  Image as ImageIcon,
+  Mic,
+  MicOff,
+  Paperclip
 } from 'lucide-react';
 import { CROPS, NATURAL_INPUTS, Crop, NaturalInput } from './data';
 import { chatWithPrakritiMitra, generateSpeech } from './services/geminiService';
 import ReactMarkdown from 'react-markdown';
+import { auth, db } from './firebase';
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged,
+  User
+} from 'firebase/auth';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  setDoc, 
+  deleteDoc,
+  query,
+  orderBy
+} from 'firebase/firestore';
 
 type Screen = 'home' | 'crops' | 'inputs' | 'chat' | 'handbook' | 'admin' | 'videos';
 
@@ -173,6 +195,7 @@ const getYouTubeEmbedUrl = (url: string) => {
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
+  const [user, setUser] = useState<User | null>(null);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [handbookData, setHandbookData] = useState<HandbookCategory[]>(INITIAL_HANDBOOK);
   const [calculators, setCalculators] = useState<Calculator[]>(INITIAL_CALCULATORS);
@@ -181,9 +204,66 @@ export default function App() {
   const [selectedCrop, setSelectedCrop] = useState<Crop | null>(null);
   const [selectedInput, setSelectedInput] = useState<NaturalInput | null>(null);
 
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        setIsAdminLoggedIn(true);
+      } else {
+        setIsAdminLoggedIn(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Real-time Firestore listeners
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubHandbook = onSnapshot(collection(db, 'handbook'), (snapshot) => {
+      if (!snapshot.empty) {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HandbookCategory));
+        setHandbookData(data);
+      }
+    });
+
+    const unsubCalculators = onSnapshot(collection(db, 'calculators'), (snapshot) => {
+      if (!snapshot.empty) {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Calculator));
+        setCalculators(data);
+      }
+    });
+
+    const unsubVideos = onSnapshot(collection(db, 'videos'), (snapshot) => {
+      if (!snapshot.empty) {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VideoItem));
+        setVideos(data);
+      }
+    });
+
+    return () => {
+      unsubHandbook();
+      unsubCalculators();
+      unsubVideos();
+    };
+  }, [user]);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setCurrentScreen('home');
+    } catch (error) {
+      console.error("Logout error", error);
+    }
+  };
+
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
   const renderScreen = () => {
+    if (!user) {
+      return <LoginScreen onLogin={() => {}} />;
+    }
+
     switch (currentScreen) {
       case 'home': return <HomeScreen onNavigate={setCurrentScreen} calculators={calculators} />;
       case 'crops': return <CropsScreen onSelectCrop={setSelectedCrop} />;
@@ -192,17 +272,20 @@ export default function App() {
       case 'handbook': return <HandbookScreen onNavigate={setCurrentScreen} categories={handbookData} />;
       case 'videos': return <VideosScreen videos={videos} />;
       case 'admin': 
-        return isAdminLoggedIn ? 
-          <AdminScreen 
-            onLogout={() => setIsAdminLoggedIn(false)} 
-            categories={handbookData}
-            setCategories={setHandbookData}
-            calculators={calculators}
-            setCalculators={setCalculators}
-            videos={videos}
-            setVideos={setVideos}
-          /> : 
-          <LoginScreen onLogin={() => setIsAdminLoggedIn(true)} />;
+        if (user.email === 'prakruthimithra2026@gmail.com') {
+          return (
+            <AdminScreen 
+              onLogout={handleLogout} 
+              categories={handbookData}
+              setCategories={setHandbookData}
+              calculators={calculators}
+              setCalculators={setCalculators}
+              videos={videos}
+              setVideos={setVideos}
+            />
+          );
+        }
+        return <div className="p-10 text-center font-bold text-rose-500">Access Denied. Only administrators can access this panel.</div>;
       default: return <HomeScreen onNavigate={setCurrentScreen} calculators={calculators} />;
     }
   };
@@ -220,12 +303,23 @@ export default function App() {
           <h1 className="text-xl font-bold tracking-tight">Prakruthi Mithra</h1>
         </div>
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => setCurrentScreen('admin')}
-            className="text-xs bg-white/20 px-3 py-1.5 rounded-full text-white hover:bg-white/30 transition-colors font-bold border border-white/20"
-          >
-            Admin
-          </button>
+          {user && (
+            <button 
+              onClick={handleLogout}
+              className="p-2 hover:bg-white/10 rounded-full transition-colors"
+              title="Logout"
+            >
+              <LogOut size={20} />
+            </button>
+          )}
+          {user?.email === 'prakruthimithra2026@gmail.com' && (
+            <button 
+              onClick={() => setCurrentScreen('admin')}
+              className="text-xs bg-white/20 px-3 py-1.5 rounded-full text-white hover:bg-white/30 transition-colors font-bold border border-white/20"
+            >
+              Admin
+            </button>
+          )}
         </div>
       </header>
 
@@ -419,10 +513,12 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
 
   useEffect(() => {
     const fetchWeather = async (lat: number, lon: number) => {
+      setLoadingWeather(true);
       try {
         const response = await fetch(
           `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=10`
         );
+        if (!response.ok) throw new Error('Weather API response not ok');
         const data = await response.json();
         setWeather(data.current);
         
@@ -436,6 +532,7 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
         setForecast(forecastData);
       } catch (error) {
         console.error('Error fetching weather:', error);
+        // Fallback or silent fail
       } finally {
         setLoadingWeather(false);
       }
@@ -685,99 +782,143 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
   const [newVideoThumbnail, setNewVideoThumbnail] = useState('');
   const [editingVideo, setEditingVideo] = useState<VideoItem | null>(null);
 
+  const resizeImage = (base64Str: string, maxWidth = 800, maxHeight = 600): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7)); // Compress to JPEG with 0.7 quality
+      };
+    });
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        callback(reader.result as string);
+      reader.onloadend = async () => {
+        const resized = await resizeImage(reader.result as string);
+        callback(resized);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleReset = () => {
-    if (confirm('Are you sure you want to reset all data?')) {
-      setCategories(INITIAL_HANDBOOK);
-      setCalculators(INITIAL_CALCULATORS);
-      setVideos(INITIAL_VIDEOS);
+  const handleReset = async () => {
+    if (confirm('Are you sure you want to reset all data? This will clear Firestore and re-seed with initial data.')) {
+      // Clear and re-seed
+      for (const cat of INITIAL_HANDBOOK) {
+        await setDoc(doc(db, 'handbook', cat.id), cat);
+      }
+      for (const calc of INITIAL_CALCULATORS) {
+        await setDoc(doc(db, 'calculators', calc.id), calc);
+      }
+      for (const video of INITIAL_VIDEOS) {
+        await setDoc(doc(db, 'videos', video.id), video);
+      }
     }
   };
 
-  const handleAddVideo = () => {
+  const handleAddVideo = async () => {
     if (!newVideoTitle.trim() || !newVideoUrl.trim()) return;
+    const id = Date.now().toString();
     const newVideo: VideoItem = {
-      id: Date.now().toString(),
+      id,
       title: newVideoTitle,
       url: getYouTubeEmbedUrl(newVideoUrl),
-      thumbnail: newVideoThumbnail.trim() || `https://picsum.photos/seed/${Date.now()}/800/400`
+      thumbnail: newVideoThumbnail.trim() || `https://picsum.photos/seed/${id}/800/400`
     };
-    setVideos(prev => [...prev, newVideo]);
+    await setDoc(doc(db, 'videos', id), newVideo);
     setNewVideoTitle('');
     setNewVideoUrl('');
     setNewVideoThumbnail('');
   };
 
-  const handleDeleteVideo = (id: string) => {
+  const handleDeleteVideo = async (id: string) => {
     if (confirm('Delete this video?')) {
-      setVideos(prev => prev.filter(v => v.id !== id));
+      await deleteDoc(doc(db, 'videos', id));
     }
   };
 
-  const handleSaveVideo = () => {
+  const handleSaveVideo = async () => {
     if (!editingVideo || !editingVideo.title.trim() || !editingVideo.url.trim()) return;
     const updatedVideo = { ...editingVideo, url: getYouTubeEmbedUrl(editingVideo.url) };
-    setVideos(prev => prev.map(v => v.id === updatedVideo.id ? updatedVideo : v));
+    await setDoc(doc(db, 'videos', updatedVideo.id), updatedVideo);
     setEditingVideo(null);
   };
 
-  const handleAddCalculator = () => {
+  const handleAddCalculator = async () => {
+    const id = Date.now().toString();
     const newCalc: Calculator = {
-      id: Date.now().toString(),
+      id,
       title: 'కొత్త క్యాలిక్యులేటర్',
       baseRate: 10,
       rows: []
     };
-    setCalculators(prev => [...prev, newCalc]);
+    await setDoc(doc(db, 'calculators', id), newCalc);
     setEditingCalculator(newCalc);
   };
 
-  const handleDeleteCalculator = (id: string) => {
+  const handleDeleteCalculator = async (id: string) => {
     if (confirm('Delete this calculator?')) {
-      setCalculators(prev => prev.filter(c => c.id !== id));
+      await deleteDoc(doc(db, 'calculators', id));
     }
   };
 
-  const handleSaveCalculator = (updated: Calculator) => {
-    setCalculators(prev => prev.map(c => c.id === updated.id ? updated : c));
+  const handleSaveCalculator = async (updated: Calculator) => {
+    await setDoc(doc(db, 'calculators', updated.id), updated);
     setEditingCalculator(null);
   };
 
-  const handleAddCategory = () => {
+  const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return;
+    const id = Date.now().toString();
     const newCat: HandbookCategory = {
-      id: Date.now().toString(),
+      id,
       name: newCategoryName,
       items: []
     };
-    setCategories(prev => [...prev, newCat]);
+    await setDoc(doc(db, 'handbook', id), newCat);
     setNewCategoryName('');
   };
 
-  const handleUpdateCategoryName = () => {
+  const handleUpdateCategoryName = async () => {
     if (!editingCategory || !editingCategory.name.trim()) return;
-    setCategories(prev => prev.map(c => c.id === editingCategory.id ? editingCategory : c));
+    await setDoc(doc(db, 'handbook', editingCategory.id), editingCategory);
     setEditingCategory(null);
   };
 
-  const handleDeleteCategory = (id: string) => {
+  const handleDeleteCategory = async (id: string) => {
     if (confirm('Delete this category and all its items?')) {
-      setCategories(prev => prev.filter(c => c.id !== id));
+      await deleteDoc(doc(db, 'handbook', id));
     }
   };
 
-  const handleAddItem = (catId: string) => {
+  const handleAddItem = async (catId: string) => {
     if (!newItemName.trim()) return;
+    const cat = categories.find(c => c.id === catId);
+    if (!cat) return;
+
     const newItem: HandbookItem = { 
       id: Date.now().toString(), 
       name: newItemName, 
@@ -785,43 +926,39 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
       sections: [],
       image: 'https://picsum.photos/seed/' + Date.now() + '/800/400'
     };
-    setCategories(prev => prev.map(c => {
-      if (c.id === catId) {
-        return {
-          ...c,
-          items: [...c.items, newItem]
-        };
-      }
-      return c;
-    }));
+
+    const updatedCat = {
+      ...cat,
+      items: [...cat.items, newItem]
+    };
+    
+    await setDoc(doc(db, 'handbook', catId), updatedCat);
     setNewItemName('');
     setAddingToCategory(null);
   };
 
-  const handleDeleteItem = (catId: string, itemId: string) => {
+  const handleDeleteItem = async (catId: string, itemId: string) => {
     if (confirm('Delete this subcategory?')) {
-      setCategories(prev => prev.map(c => {
-        if (c.id === catId) {
-          return {
-            ...c,
-            items: c.items.filter(i => i.id !== itemId)
-          };
-        }
-        return c;
-      }));
+      const cat = categories.find(c => c.id === catId);
+      if (!cat) return;
+
+      const updatedCat = {
+        ...cat,
+        items: cat.items.filter(i => i.id !== itemId)
+      };
+      await setDoc(doc(db, 'handbook', catId), updatedCat);
     }
   };
 
-  const handleSaveItem = (catId: string, updatedItem: HandbookItem) => {
-    setCategories(prev => prev.map(c => {
-      if (c.id === catId) {
-        return {
-          ...c,
-          items: c.items.map(i => i.id === updatedItem.id ? updatedItem : i)
-        };
-      }
-      return c;
-    }));
+  const handleSaveItem = async (catId: string, updatedItem: HandbookItem) => {
+    const cat = categories.find(c => c.id === catId);
+    if (!cat) return;
+
+    const updatedCat = {
+      ...cat,
+      items: cat.items.map(i => i.id === updatedItem.id ? updatedItem : i)
+    };
+    await setDoc(doc(db, 'handbook', catId), updatedCat);
     setEditingItem(null);
   };
 
@@ -1227,12 +1364,43 @@ function ItemEditor({ catId, item, onSave, onCancel }: {
     });
   };
 
+  const resizeImage = (base64Str: string, maxWidth = 800, maxHeight = 600): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+    });
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditedItem({ ...editedItem, image: reader.result as string });
+      reader.onloadend = async () => {
+        const resized = await resizeImage(reader.result as string);
+        setEditedItem({ ...editedItem, image: resized });
       };
       reader.readAsDataURL(file);
     }
@@ -1351,13 +1519,43 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email === 'prakruthimithra2026@gmail.com' && password === 'Ravi@1985') {
+    setError('');
+    setLoading(true);
+
+    try {
+      if (isSignUp) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
       onLogin();
-    } else {
-      setError('Invalid email or password');
+    } catch (err: any) {
+      console.error("Auth error", err);
+      const errorCode = err.code;
+      
+      if (errorCode === 'auth/email-already-in-use') {
+        setError('ఈ ఈమెయిల్ ఇప్పటికే రిజిస్టర్ అయి ఉంది. దయచేసి లాగిన్ అవ్వండి. (User already exists. Please sign in)');
+      } else if (
+        errorCode === 'auth/invalid-credential' || 
+        errorCode === 'auth/invalid-login-credentials' ||
+        errorCode === 'auth/user-not-found' || 
+        errorCode === 'auth/wrong-password'
+      ) {
+        setError('ఈమెయిల్ లేదా పాస్‌వర్డ్ తప్పుగా ఉంది. (Email or password is incorrect)');
+      } else if (errorCode === 'auth/weak-password') {
+        setError('పాస్‌వర్డ్ కనీసం 6 అక్షరాలు ఉండాలి. (Password should be at least 6 characters)');
+      } else if (errorCode === 'auth/invalid-email') {
+        setError('సరైన ఈమెయిల్ అడ్రస్ ఇవ్వండి. (Please enter a valid email)');
+      } else {
+        setError('లాగిన్ చేయడంలో సమస్య ఏర్పడింది. దయచేసి మళ్ళీ ప్రయత్నించండి.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1366,9 +1564,9 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
       <div className="bg-white p-8 rounded-[40px] border border-black/5 shadow-lg w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <div className="bg-[#f0fdf4] w-16 h-16 rounded-full flex items-center justify-center mx-auto">
-            <ShieldCheck className="text-[#1b7d36]" size={32} />
+            <UserCircle className="text-[#1b7d36]" size={32} />
           </div>
-          <h2 className="text-xl font-bold text-stone-800">Admin Login</h2>
+          <h2 className="text-xl font-bold text-stone-800">{isSignUp ? 'Sign Up' : 'Login'}</h2>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1379,7 +1577,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
               value={email}
               onChange={e => setEmail(e.target.value)}
               className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
-              placeholder="admin@example.com"
+              placeholder="your@email.com"
               required
             />
           </div>
@@ -1397,11 +1595,21 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           {error && <p className="text-rose-500 text-xs font-bold text-center">{error}</p>}
           <button 
             type="submit"
-            className="w-full bg-[#1b7d36] text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-[#16652b] transition-colors"
+            disabled={loading}
+            className="w-full bg-[#1b7d36] text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-[#16652b] transition-colors disabled:opacity-50"
           >
-            Login
+            {loading ? 'Processing...' : (isSignUp ? 'Sign Up' : 'Login')}
           </button>
         </form>
+
+        <div className="text-center">
+          <button 
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-sm text-[#1b7d36] font-bold hover:underline"
+          >
+            {isSignUp ? 'Already have an account? Login' : 'Don\'t have an account? Sign Up'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1462,10 +1670,14 @@ function InputsScreen({ onSelectInput }: { onSelectInput: (i: NaturalInput) => v
 }
 
 function ChatScreen() {
-  const [messages, setMessages] = useState<{ role: string, parts: { text: string }[] }[]>([]);
+  const [messages, setMessages] = useState<{ role: string, parts: { text?: string, inlineData?: { mimeType: string, data: string } }[] }[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{ mimeType: string, data: string } | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -1473,18 +1685,54 @@ function ChatScreen() {
     }
   }, [messages]);
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        setSelectedImage({
+          mimeType: file.type,
+          data: base64
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && !selectedImage) || isLoading) return;
 
     const userMessage = input;
+    const currentImage = selectedImage;
+    
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', parts: [{ text: userMessage }] }]);
+    setSelectedImage(null);
+
+    const userParts: any[] = [];
+    if (userMessage) userParts.push({ text: userMessage });
+    if (currentImage) userParts.push({ inlineData: currentImage });
+
+    setMessages(prev => [...prev, { role: 'user', parts: userParts }]);
     setIsLoading(true);
 
-    const response = await chatWithPrakritiMitra(userMessage, messages);
+    const response = await chatWithPrakritiMitra(userMessage || "చిత్రాన్ని విశ్లేషించండి", messages, currentImage || undefined);
     
     setMessages(prev => [...prev, { role: 'model', parts: [{ text: response || '' }] }]);
     setIsLoading(false);
+  };
+
+  const toggleRecording = () => {
+    // In a real app, we'd use Web Audio API / MediaRecorder
+    // For this demo, we'll just toggle the UI state
+    setIsRecording(!isRecording);
+    if (!isRecording) {
+      // Simulate voice-to-text or just alert
+      setTimeout(() => {
+        setIsRecording(false);
+        // setInput("వాయిస్ కమాండ్ సిమ్యులేషన్");
+      }, 3000);
+    }
   };
 
   return (
@@ -1496,18 +1744,35 @@ function ChatScreen() {
               <MessageSquare className="text-[#1b7d36]" size={32} />
             </div>
             <h3 className="text-xl font-bold">నేను మీకు ఎలా సహాయపడగలను?</h3>
-            <p className="text-stone-500 max-w-xs mx-auto text-sm">ప్రకృతి వ్యవసాయం గురించి ఏదైనా అడగండి. ఉదాహరణకు: "జీవామృతం ఎలా తయారు చేయాలి?"</p>
+            <p className="text-stone-500 max-w-xs mx-auto text-sm">ప్రకృతి వ్యవసాయం గురించి ఏదైనా అడగండి లేదా ఫోటో తీసి పంపండి.</p>
           </div>
         )}
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm relative group ${m.role === 'user' ? 'bg-[#1b7d36] text-white rounded-tr-none' : 'bg-white text-stone-800 rounded-tl-none border border-black/5'}`}>
-              <div className="prose prose-sm prose-stone max-w-none">
-                <ReactMarkdown>{m.parts[0].text}</ReactMarkdown>
+              <div className="space-y-2">
+                {m.parts.map((part, idx) => (
+                  <React.Fragment key={idx}>
+                    {part.text && (
+                      <div className="prose prose-sm prose-stone max-w-none text-inherit">
+                        <ReactMarkdown>{part.text}</ReactMarkdown>
+                      </div>
+                    )}
+                    {part.inlineData && (
+                      <img 
+                        src={`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`} 
+                        alt="User upload" 
+                        className="rounded-lg max-w-full h-auto border border-black/10"
+                      />
+                    )}
+                  </React.Fragment>
+                ))}
               </div>
-              <div className={`flex justify-end mt-1 border-t border-black/5 pt-1 opacity-60`}>
-                <TTSButton text={m.parts[0].text} />
-              </div>
+              {m.role === 'model' && m.parts[0].text && (
+                <div className={`flex justify-end mt-1 border-t border-black/5 pt-1 opacity-60`}>
+                  <TTSButton text={m.parts[0].text} />
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -1524,22 +1789,77 @@ function ChatScreen() {
         )}
       </div>
       
-      <div className="mt-2 flex gap-2">
-        <input 
-          type="text" 
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyPress={e => e.key === 'Enter' && handleSend()}
-          placeholder="మీ ప్రశ్నను ఇక్కడ టైప్ చేయండి..."
-          className="flex-1 bg-white border border-stone-200 rounded-full px-5 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20 text-sm"
-        />
-        <button 
-          onClick={handleSend}
-          disabled={isLoading}
-          className="bg-[#1b7d36] text-white p-3 rounded-full shadow-md hover:scale-105 transition-transform disabled:opacity-50"
-        >
-          <Send size={20} />
-        </button>
+      {selectedImage && (
+        <div className="mb-2 p-2 bg-white rounded-2xl border border-emerald-100 flex items-center gap-3 shadow-sm">
+          <img 
+            src={`data:${selectedImage.mimeType};base64,${selectedImage.data}`} 
+            className="w-12 h-12 rounded-lg object-cover" 
+          />
+          <span className="text-xs font-bold text-stone-500 flex-1">Image selected</span>
+          <button onClick={() => setSelectedImage(null)} className="p-1 text-rose-500">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2 px-2">
+          <button 
+            onClick={() => cameraInputRef.current?.click()}
+            className="p-2 bg-stone-100 text-stone-600 rounded-full hover:bg-stone-200 transition-colors"
+            title="Take Photo"
+          >
+            <Camera size={20} />
+          </button>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 bg-stone-100 text-stone-600 rounded-full hover:bg-stone-200 transition-colors"
+            title="Upload from Gallery"
+          >
+            <ImageIcon size={20} />
+          </button>
+          <button 
+            onClick={toggleRecording}
+            className={`p-2 rounded-full transition-colors ${isRecording ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
+            title="Voice Input"
+          >
+            {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+          </button>
+          
+          <input 
+            type="file" 
+            accept="image/*" 
+            capture="environment" 
+            className="hidden" 
+            ref={cameraInputRef}
+            onChange={handleImageUpload}
+          />
+          <input 
+            type="file" 
+            accept="image/*" 
+            className="hidden" 
+            ref={fileInputRef}
+            onChange={handleImageUpload}
+          />
+        </div>
+
+        <div className="flex gap-2">
+          <input 
+            type="text" 
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyPress={e => e.key === 'Enter' && handleSend()}
+            placeholder={isRecording ? "రికార్డింగ్ అవుతోంది..." : "మీ ప్రశ్నను ఇక్కడ టైప్ చేయండి..."}
+            className="flex-1 bg-white border border-stone-200 rounded-full px-5 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20 text-sm"
+          />
+          <button 
+            onClick={handleSend}
+            disabled={isLoading}
+            className="bg-[#1b7d36] text-white p-3 rounded-full shadow-md hover:scale-105 transition-transform disabled:opacity-50"
+          >
+            <Send size={20} />
+          </button>
+        </div>
       </div>
     </div>
   );

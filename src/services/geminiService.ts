@@ -2,7 +2,11 @@ import { GoogleGenAI, Modality } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-export const chatWithPrakritiMitra = async (message: string, history: { role: string, parts: { text: string }[] }[]) => {
+export const chatWithPrakritiMitra = async (
+  message: string, 
+  history: { role: string, parts: { text?: string, inlineData?: { mimeType: string, data: string } }[] }[],
+  image?: { mimeType: string, data: string }
+) => {
   const model = "gemini-3.1-pro-preview";
   
   const systemInstruction = `You are "Prakriti Mitra" (Nature's Friend), an expert AI assistant for natural farming in Andhra Pradesh, specifically focusing on APCNF (Andhra Pradesh Community-managed Natural Farming) techniques.
@@ -21,15 +25,21 @@ export const chatWithPrakritiMitra = async (message: string, history: { role: st
   - Base your answers on the principles of natural farming.
   - If a query is about chemical fertilizers or pesticides, gently explain why natural alternatives are better for soil health and long-term sustainability.
   - Keep instructions clear and step-by-step for easy understanding.
+  - If an image is provided, analyze it (e.g., identifying a pest or crop disease) and provide advice based on natural farming principles.
   
   Context: You have deep knowledge of the APCNF Handbook 2022.`;
 
   try {
+    const parts: any[] = [{ text: message }];
+    if (image) {
+      parts.push({ inlineData: image });
+    }
+
     const response = await ai.models.generateContent({
       model,
       contents: [
         ...history.map(h => ({ role: h.role, parts: h.parts })),
-        { role: "user", parts: [{ text: message }] }
+        { role: "user", parts }
       ],
       config: {
         systemInstruction,
