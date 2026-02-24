@@ -39,11 +39,10 @@ import {
   Volume2,
   VolumeX,
   Loader2,
-  Camera,
   Image as ImageIcon,
-  Mic,
-  MicOff,
   Paperclip,
+  ArrowUp,
+  ArrowDown,
   Mail
 } from 'lucide-react';
 import { CROPS, NATURAL_INPUTS, Crop, NaturalInput } from './data';
@@ -96,6 +95,7 @@ interface HandbookCategory {
   id: string;
   name: string;
   items: HandbookItem[];
+  order?: number;
 }
 
 interface CalculatorRow {
@@ -116,6 +116,7 @@ const INITIAL_HANDBOOK: HandbookCategory[] = [
   {
     id: '1',
     name: 'PMDS విధానం',
+    order: 0,
     items: [
       { id: '1-1', name: 'PMDS', screen: 'home', sections: [], image: 'https://picsum.photos/seed/pmds/800/400' },
       { id: '1-2', name: 'విత్తన గుళికలు', screen: 'home', sections: [], image: 'https://picsum.photos/seed/seeds/800/400' }
@@ -124,6 +125,7 @@ const INITIAL_HANDBOOK: HandbookCategory[] = [
   {
     id: '2',
     name: 'కషాయాలు',
+    order: 1,
     items: [
       { 
         id: '2-1', 
@@ -142,6 +144,7 @@ const INITIAL_HANDBOOK: HandbookCategory[] = [
   {
     id: '3',
     name: 'పంటలు',
+    order: 2,
     items: [
       { id: '3-1', name: 'వరి (Paddy)', screen: 'crops', sections: [], image: 'https://picsum.photos/seed/paddy/800/400' },
       { id: '3-2', name: 'వేరుశనగ', screen: 'crops', sections: [], image: 'https://picsum.photos/seed/groundnut/800/400' },
@@ -236,6 +239,7 @@ export default function App() {
     const unsubHandbook = onSnapshot(collection(db, 'handbook'), (snapshot) => {
       if (!snapshot.empty) {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HandbookCategory));
+        data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         setHandbookData(data);
       }
     });
@@ -909,10 +913,27 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
     const newCat: HandbookCategory = {
       id,
       name: newCategoryName,
-      items: []
+      items: [],
+      order: categories.length
     };
     await setDoc(doc(db, 'handbook', id), newCat);
     setNewCategoryName('');
+  };
+
+  const handleMoveCategory = async (id: string, direction: 'up' | 'down') => {
+    const index = categories.findIndex(c => c.id === id);
+    if (index === -1) return;
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === categories.length - 1) return;
+
+    const newCategories = [...categories];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    [newCategories[index], newCategories[targetIndex]] = [newCategories[targetIndex], newCategories[index]];
+
+    // Update all categories with their new order in Firestore
+    for (let i = 0; i < newCategories.length; i++) {
+      await setDoc(doc(db, 'handbook', newCategories[i].id), { ...newCategories[i], order: i });
+    }
   };
 
   const handleUpdateCategoryName = async () => {
@@ -1091,7 +1112,25 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
                 <div className="flex flex-col gap-2 px-2">
                   <div className="flex justify-between items-center">
                     <h4 className="text-base font-bold text-[#1b7d36]">{cat.name}</h4>
-                    <div className="flex gap-4">
+                    <div className="flex gap-4 items-center">
+                      <div className="flex gap-1 mr-2">
+                        <button 
+                          onClick={() => handleMoveCategory(cat.id, 'up')}
+                          disabled={categories.indexOf(cat) === 0}
+                          className="p-1 text-[#1b7d36] disabled:opacity-20 hover:bg-[#1b7d36]/10 rounded"
+                          title="Move Up"
+                        >
+                          <ArrowUp size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleMoveCategory(cat.id, 'down')}
+                          disabled={categories.indexOf(cat) === categories.length - 1}
+                          className="p-1 text-[#1b7d36] disabled:opacity-20 hover:bg-[#1b7d36]/10 rounded"
+                          title="Move Down"
+                        >
+                          <ArrowDown size={16} />
+                        </button>
+                      </div>
                       <button 
                         onClick={() => setEditingCategory(cat)}
                         className="text-blue-500 text-sm font-bold"
@@ -1757,10 +1796,8 @@ function ChatScreen() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ mimeType: string, data: string } | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -1803,19 +1840,6 @@ function ChatScreen() {
     
     setMessages(prev => [...prev, { role: 'model', parts: [{ text: response || '' }] }]);
     setIsLoading(false);
-  };
-
-  const toggleRecording = () => {
-    // In a real app, we'd use Web Audio API / MediaRecorder
-    // For this demo, we'll just toggle the UI state
-    setIsRecording(!isRecording);
-    if (!isRecording) {
-      // Simulate voice-to-text or just alert
-      setTimeout(() => {
-        setIsRecording(false);
-        // setInput("వాయిస్ కమాండ్ సిమ్యులేషన్");
-      }, 3000);
-    }
   };
 
   return (
@@ -1888,35 +1912,13 @@ function ChatScreen() {
       <div className="flex flex-col gap-2">
         <div className="flex gap-2 px-2">
           <button 
-            onClick={() => cameraInputRef.current?.click()}
-            className="p-2 bg-stone-100 text-stone-600 rounded-full hover:bg-stone-200 transition-colors"
-            title="Take Photo"
-          >
-            <Camera size={20} />
-          </button>
-          <button 
             onClick={() => fileInputRef.current?.click()}
             className="p-2 bg-stone-100 text-stone-600 rounded-full hover:bg-stone-200 transition-colors"
             title="Upload from Gallery"
           >
             <ImageIcon size={20} />
           </button>
-          <button 
-            onClick={toggleRecording}
-            className={`p-2 rounded-full transition-colors ${isRecording ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
-            title="Voice Input"
-          >
-            {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
-          </button>
           
-          <input 
-            type="file" 
-            accept="image/*" 
-            capture="environment" 
-            className="hidden" 
-            ref={cameraInputRef}
-            onChange={handleImageUpload}
-          />
           <input 
             type="file" 
             accept="image/*" 
@@ -1932,7 +1934,7 @@ function ChatScreen() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyPress={e => e.key === 'Enter' && handleSend()}
-            placeholder={isRecording ? "రికార్డింగ్ అవుతోంది..." : "మీ ప్రశ్నను ఇక్కడ టైప్ చేయండి..."}
+            placeholder="మీ ప్రశ్నను ఇక్కడ టైప్ చేయండి..."
             className="flex-1 bg-white border border-stone-200 rounded-full px-5 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20 text-sm"
           />
           <button 

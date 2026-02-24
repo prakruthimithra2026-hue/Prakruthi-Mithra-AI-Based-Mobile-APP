@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI, Modality, ThinkingLevel } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -7,7 +7,7 @@ export const chatWithPrakritiMitra = async (
   history: { role: string, parts: { text?: string, inlineData?: { mimeType: string, data: string } }[] }[],
   image?: { mimeType: string, data: string }
 ) => {
-  const model = "gemini-3.1-pro-preview";
+  const model = "gemini-3-flash-preview";
   
   const systemInstruction = `You are "Prakriti Mitra" (Nature's Friend), an expert AI assistant for natural farming in Andhra Pradesh, specifically focusing on APCNF (Andhra Pradesh Community-managed Natural Farming) techniques.
   
@@ -30,9 +30,13 @@ export const chatWithPrakritiMitra = async (
   Context: You have deep knowledge of the APCNF Handbook 2022.`;
 
   try {
-    const parts: any[] = [{ text: message }];
-    if (image) {
-      parts.push({ inlineData: image });
+    const parts: any[] = [];
+    if (message) parts.push({ text: message });
+    if (image) parts.push({ inlineData: image });
+
+    // If no message but has image, add a default prompt
+    if (parts.length > 0 && !message) {
+      parts.unshift({ text: "Please analyze this input and provide natural farming advice in Telugu." });
     }
 
     const response = await ai.models.generateContent({
@@ -44,6 +48,7 @@ export const chatWithPrakritiMitra = async (
       config: {
         systemInstruction,
         temperature: 0.7,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       },
     });
 
