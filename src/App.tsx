@@ -48,6 +48,8 @@ import {
 import { CROPS, NATURAL_INPUTS, Crop, NaturalInput } from './data';
 import { chatWithPrakritiMitra, generateSpeech } from './services/geminiService';
 import ReactMarkdown from 'react-markdown';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import { auth, db } from './firebase';
 import { 
   signInWithEmailAndPassword, 
@@ -527,17 +529,34 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
   const [forecast, setForecast] = useState<any[]>([]);
   const [showForecast, setShowForecast] = useState(false);
   const [loadingWeather, setLoadingWeather] = useState(true);
+  const [locationName, setLocationName] = useState<string>('');
 
   useEffect(() => {
     const fetchWeather = async (lat: number, lon: number) => {
       setLoadingWeather(true);
       try {
-        const response = await fetch(
+        // Fetch Weather
+        const weatherPromise = fetch(
           `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=10`
         );
-        if (!response.ok) throw new Error('Weather API response not ok');
-        const data = await response.json();
+
+        // Fetch Location Name (Reverse Geocoding)
+        const geoPromise = fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`
+        ).then(res => res.json()).catch(() => null);
+
+        const [weatherRes, geoData] = await Promise.all([weatherPromise, geoPromise]);
+        
+        if (!weatherRes.ok) throw new Error('Weather API response not ok');
+        const data = await weatherRes.json();
         setWeather(data.current);
+        
+        if (geoData) {
+          const city = geoData.address.city || geoData.address.town || geoData.address.village || geoData.address.county || 'Unknown Location';
+          setLocationName(city);
+        } else {
+          setLocationName(lat === 16.5062 ? 'Vijayawada' : 'Current Location');
+        }
         
         const daily = data.daily;
         const forecastData = daily.time.map((time: string, i: number) => ({
@@ -582,34 +601,64 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
   };
 
   const handleShare = async (calc: Calculator) => {
-    const total = (acres * calc.baseRate).toFixed(1);
-    let text = `*${calc.title}*\n`;
-    text += `ఎకరాల సంఖ్య: ${acres}\n`;
-    text += `మొత్తం: ${total} kg\n\n`;
-    
-    calc.rows.forEach(row => {
-      const amount = (acres * row.ratio).toFixed(2);
-      text += `• ${row.label}: ${amount} kg\n`;
-    });
+    const element = document.getElementById(`calc-${calc.id}`);
+    if (!element) return;
 
-    text += `\nShared via Prakruthi Mithra AI`;
+    try {
+      // Create a canvas from the element
+      const canvas = await html2canvas(element, {
+        scale: 2, // Higher quality
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false
+      });
 
-    if (navigator.share) {
-      try {
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'px',
+        format: [canvas.width / 2, canvas.height / 2]
+      });
+
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
+      
+      const pdfBlob = pdf.output('blob');
+      const fileName = `${calc.title.replace(/\s+/g, '_')}_Report.pdf`;
+      const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: calc.title,
+          text: `Check out this ${calc.title} report generated via Prakruthi Mithra AI.`,
+        });
+      } else {
+        // Fallback: Download the PDF
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(pdfBlob);
+        link.download = fileName;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+    } catch (err) {
+      console.error('Error generating/sharing PDF:', err);
+      // Fallback to text share if PDF fails
+      const total = (acres * calc.baseRate).toFixed(1);
+      let text = `*${calc.title}*\n`;
+      text += `ఎకరాల సంఖ్య: ${acres}\n`;
+      text += `మొత్తం: ${total} kg\n\n`;
+      
+      calc.rows.forEach(row => {
+        const amount = (acres * row.ratio).toFixed(2);
+        text += `• ${row.label}: ${amount} kg\n`;
+      });
+      text += `\nShared via Prakruthi Mithra AI`;
+
+      if (navigator.share) {
         await navigator.share({
           title: calc.title,
           text: text,
         });
-      } catch (err) {
-        console.error('Error sharing:', err);
-      }
-    } else {
-      // Fallback: Copy to clipboard
-      try {
-        await navigator.clipboard.writeText(text);
-        alert('సమాచారం క్లిప్‌బోర్డ్‌కు కాపీ చేయబడింది!');
-      } catch (err) {
-        console.error('Error copying:', err);
       }
     }
   };
@@ -646,6 +695,11 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
           ) : (
             <>
               <div className="space-y-1">
+                {locationName && (
+                  <div className="flex items-center gap-1 text-[#1b7d36]">
+                    <span className="text-[10px] font-black uppercase tracking-widest">{locationName}</span>
+                  </div>
+                )}
                 <div className="flex items-baseline gap-1">
                   <span className="text-xl font-bold text-stone-800">{weather?.temperature_2m}°C</span>
                 </div>
@@ -709,7 +763,7 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
             </button>
           </div>
           
-          <div className="bg-white p-8 rounded-[40px] border border-black/5 shadow-sm space-y-8">
+          <div id={`calc-${calc.id}`} className="bg-white p-8 rounded-[40px] border border-black/5 shadow-sm space-y-8">
             <div className="flex items-center justify-between bg-[#1b7d36] p-5 rounded-3xl border border-black/5">
               <label className="text-white font-bold text-sm">ఎకరాల సంఖ్య:</label>
               <input 
