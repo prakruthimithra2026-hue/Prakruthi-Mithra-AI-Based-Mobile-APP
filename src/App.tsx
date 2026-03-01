@@ -70,7 +70,13 @@ import {
   orderBy
 } from 'firebase/firestore';
 
-type Screen = 'home' | 'crops' | 'inputs' | 'chat' | 'handbook' | 'admin' | 'videos';
+type Screen = 'home' | 'crops' | 'inputs' | 'chat' | 'handbook' | 'admin' | 'videos' | 'privacy' | 'terms';
+
+interface PageContent {
+  id: string;
+  title: string;
+  content: string;
+}
 
 interface VideoItem {
   id: string;
@@ -208,6 +214,8 @@ export default function App() {
   const [handbookData, setHandbookData] = useState<HandbookCategory[]>(INITIAL_HANDBOOK);
   const [calculators, setCalculators] = useState<Calculator[]>(INITIAL_CALCULATORS);
   const [videos, setVideos] = useState<VideoItem[]>(INITIAL_VIDEOS);
+  const [privacyPolicy, setPrivacyPolicy] = useState<PageContent>({ id: 'privacy', title: 'Privacy Policy', content: '' });
+  const [termsConditions, setTermsConditions] = useState<PageContent>({ id: 'terms', title: 'Terms and Conditions', content: '' });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedCrop, setSelectedCrop] = useState<Crop | null>(null);
   const [selectedInput, setSelectedInput] = useState<NaturalInput | null>(null);
@@ -260,10 +268,19 @@ export default function App() {
       }
     });
 
+    const unsubPages = onSnapshot(collection(db, 'pages'), (snapshot) => {
+      snapshot.docs.forEach(doc => {
+        const data = doc.data() as PageContent;
+        if (doc.id === 'privacy') setPrivacyPolicy({ id: 'privacy', ...data });
+        if (doc.id === 'terms') setTermsConditions({ id: 'terms', ...data });
+      });
+    });
+
     return () => {
       unsubHandbook();
       unsubCalculators();
       unsubVideos();
+      unsubPages();
     };
   }, [user]);
 
@@ -290,6 +307,8 @@ export default function App() {
       case 'chat': return <ChatScreen />;
       case 'handbook': return <HandbookScreen onNavigate={setCurrentScreen} categories={handbookData} />;
       case 'videos': return <VideosScreen videos={videos} />;
+      case 'privacy': return <PageScreen content={privacyPolicy} onBack={() => setCurrentScreen('home')} />;
+      case 'terms': return <PageScreen content={termsConditions} onBack={() => setCurrentScreen('home')} />;
       case 'admin': 
         if (user.email === 'prakruthimithra2026@gmail.com') {
           return (
@@ -301,6 +320,10 @@ export default function App() {
               setCalculators={setCalculators}
               videos={videos}
               setVideos={setVideos}
+              privacyPolicy={privacyPolicy}
+              setPrivacyPolicy={setPrivacyPolicy}
+              termsConditions={termsConditions}
+              setTermsConditions={setTermsConditions}
             />
           );
         }
@@ -324,23 +347,92 @@ export default function App() {
         <div className="flex items-center gap-4">
           {user && (
             <button 
-              onClick={handleLogout}
+              onClick={() => setIsMenuOpen(true)}
               className="p-2 hover:bg-white/10 rounded-full transition-colors"
-              title="Logout"
+              title="Menu"
             >
-              <LogOut size={20} />
-            </button>
-          )}
-          {user?.email === 'prakruthimithra2026@gmail.com' && (
-            <button 
-              onClick={() => setCurrentScreen('admin')}
-              className="text-xs bg-white/20 px-3 py-1.5 rounded-full text-white hover:bg-white/30 transition-colors font-bold border border-white/20"
-            >
-              Admin
+              <Menu size={24} />
             </button>
           )}
         </div>
       </header>
+
+      {/* Sidebar Menu */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMenuOpen(false)}
+              className="fixed inset-0 bg-black/50 z-[60]"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 h-full w-72 bg-white z-[70] shadow-2xl flex flex-col"
+            >
+              <div className="p-6 border-b flex items-center justify-between bg-[#1b7d36] text-white">
+                <h2 className="font-bold text-lg">Menu</h2>
+                <button onClick={() => setIsMenuOpen(false)} className="p-1 hover:bg-white/10 rounded-full">
+                  <X size={24} />
+                </button>
+              </div>
+              
+              <div className="flex-1 py-4">
+                <button 
+                  onClick={() => { setCurrentScreen('home'); setIsMenuOpen(false); }}
+                  className="w-full px-6 py-4 flex items-center gap-4 hover:bg-stone-50 text-stone-700 transition-colors"
+                >
+                  <Home size={20} />
+                  <span className="font-medium">Home</span>
+                </button>
+                
+                {user?.email === 'prakruthimithra2026@gmail.com' && (
+                  <button 
+                    onClick={() => { setCurrentScreen('admin'); setIsMenuOpen(false); }}
+                    className="w-full px-6 py-4 flex items-center gap-4 hover:bg-stone-50 text-stone-700 transition-colors"
+                  >
+                    <ShieldCheck size={20} />
+                    <span className="font-medium">Admin Panel</span>
+                  </button>
+                )}
+
+                <div className="my-2 border-t border-stone-100" />
+                
+                <button 
+                  onClick={() => { setCurrentScreen('privacy'); setIsMenuOpen(false); }}
+                  className="w-full px-6 py-4 flex items-center gap-4 hover:bg-stone-50 text-stone-700 transition-colors"
+                >
+                  <ShieldCheck size={20} />
+                  <span className="font-medium">Privacy Policy</span>
+                </button>
+                
+                <button 
+                  onClick={() => { setCurrentScreen('terms'); setIsMenuOpen(false); }}
+                  className="w-full px-6 py-4 flex items-center gap-4 hover:bg-stone-50 text-stone-700 transition-colors"
+                >
+                  <Book size={20} />
+                  <span className="font-medium">Terms & Conditions</span>
+                </button>
+              </div>
+
+              <div className="p-4 border-t bg-stone-50">
+                <button 
+                  onClick={() => { handleLogout(); setIsMenuOpen(false); }}
+                  className="w-full px-6 py-4 flex items-center gap-4 hover:bg-rose-50 text-rose-600 rounded-2xl transition-colors"
+                >
+                  <LogOut size={20} />
+                  <span className="font-bold">Logout</span>
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto relative">
@@ -523,6 +615,24 @@ function TTSButton({ text }: { text: string }) {
   );
 }
 
+function PageScreen({ content, onBack }: { content: PageContent, onBack: () => void }) {
+  return (
+    <div className="flex flex-col h-full bg-white">
+      <div className="p-4 border-b flex items-center gap-4 sticky top-0 bg-white z-10">
+        <button onClick={onBack} className="p-2 hover:bg-stone-100 rounded-full transition-colors text-stone-600">
+          <ChevronLeft size={24} />
+        </button>
+        <h2 className="text-xl font-bold text-stone-800">{content.title}</h2>
+      </div>
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="prose prose-stone max-w-none markdown-body">
+          <ReactMarkdown>{content.content || '*No content yet. Please add content in the Admin Panel.*'}</ReactMarkdown>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => void, calculators: Calculator[] }) {
   const [acres, setAcres] = useState(1);
   const [weather, setWeather] = useState<any>(null);
@@ -542,7 +652,7 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
 
         // Fetch Location Name (Reverse Geocoding)
         const geoPromise = fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=12&accept-language=te`
         ).then(res => res.json()).catch(() => null);
 
         const [weatherRes, geoData] = await Promise.all([weatherPromise, geoPromise]);
@@ -552,10 +662,11 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
         setWeather(data.current);
         
         if (geoData) {
-          const city = geoData.address.city || geoData.address.town || geoData.address.village || geoData.address.county || 'Unknown Location';
+          const addr = geoData.address;
+          const city = addr.city || addr.town || addr.village || addr.suburb || addr.neighbourhood || addr.county || 'తెలియని ప్రాంతం';
           setLocationName(city);
         } else {
-          setLocationName(lat === 16.5062 ? 'Vijayawada' : 'Current Location');
+          setLocationName(lat === 16.5062 ? 'విజయవాడ' : 'ప్రస్తుత ప్రాంతం');
         }
         
         const daily = data.daily;
@@ -593,11 +704,11 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
   };
 
   const getWeatherText = (code: number) => {
-    if (code === 0) return 'Sunny';
-    if (code <= 3) return 'Partly Cloudy';
-    if (code <= 48) return 'Cloudy';
-    if (code <= 67) return 'Rainy';
-    return 'Stormy';
+    if (code === 0) return 'ఎండగా ఉంది';
+    if (code <= 3) return 'పాక్షికంగా మేఘావృతమై ఉంది';
+    if (code <= 48) return 'మేఘావృతమై ఉంది';
+    if (code <= 67) return 'వర్షం';
+    return 'తుఫాను';
   };
 
   const handleShare = async (calc: Calculator) => {
@@ -697,7 +808,7 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
               <div className="space-y-1">
                 {locationName && (
                   <div className="flex items-center gap-1 text-[#1b7d36]">
-                    <span className="text-[10px] font-black uppercase tracking-widest">{locationName}</span>
+                    <span className="text-[18px] font-bold">{locationName}</span>
                   </div>
                 )}
                 <div className="flex items-baseline gap-1">
@@ -710,12 +821,12 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
               </div>
               <div className="text-right space-y-1">
                 <p className="text-sm text-stone-400">తేమ: {weather?.relative_humidity_2m}%</p>
-                <p className="text-sm text-emerald-600 font-bold">✓ Good for natural farming</p>
+                <p className="text-sm text-emerald-600 font-bold">✓ ప్రకృతి వ్యవసాయానికి అనుకూలం</p>
                 <button 
                   onClick={() => setShowForecast(true)}
                   className="text-sm text-stone-300 italic underline"
                 >
-                  Click to see 10-day report
+                  10 రోజుల నివేదిక చూడటానికి క్లిక్ చేయండి
                 </button>
               </div>
             </>
@@ -732,7 +843,7 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
                 <div key={i} className="flex items-center justify-between p-3 bg-stone-50 rounded-2xl border border-black/5">
                   <div className="w-24">
                     <p className="text-sm font-bold text-stone-800">
-                      {i === 0 ? 'Today' : new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' })}
+                      {i === 0 ? 'నేడు' : new Date(day.date).toLocaleDateString('te-IN', { weekday: 'short', day: 'numeric' })}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-1 justify-center">
@@ -830,16 +941,32 @@ function HomeCard({ icon, title, desc, onClick }: { icon: React.ReactNode, title
   );
 }
 
-function AdminScreen({ onLogout, categories, setCategories, calculators, setCalculators, videos, setVideos }: { 
+function AdminScreen({ 
+  onLogout, 
+  categories, 
+  setCategories, 
+  calculators, 
+  setCalculators, 
+  videos, 
+  setVideos,
+  privacyPolicy,
+  setPrivacyPolicy,
+  termsConditions,
+  setTermsConditions
+}: { 
   onLogout: () => void, 
   categories: HandbookCategory[],
   setCategories: React.Dispatch<React.SetStateAction<HandbookCategory[]>>,
   calculators: Calculator[],
   setCalculators: React.Dispatch<React.SetStateAction<Calculator[]>>,
   videos: VideoItem[],
-  setVideos: React.Dispatch<React.SetStateAction<VideoItem[]>>
+  setVideos: React.Dispatch<React.SetStateAction<VideoItem[]>>,
+  privacyPolicy: PageContent,
+  setPrivacyPolicy: React.Dispatch<React.SetStateAction<PageContent>>,
+  termsConditions: PageContent,
+  setTermsConditions: React.Dispatch<React.SetStateAction<PageContent>>
 }) {
-  const [activeTab, setActiveTab] = useState<'handbook' | 'calculators' | 'videos'>('handbook');
+  const [activeTab, setActiveTab] = useState<'handbook' | 'calculators' | 'videos' | 'pages'>('handbook');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingItem, setEditingItem] = useState<{ catId: string, item: HandbookItem } | null>(null);
   const [editingCategory, setEditingCategory] = useState<HandbookCategory | null>(null);
@@ -1099,6 +1226,12 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
         >
           Videos
         </button>
+        <button 
+          onClick={() => setActiveTab('pages')}
+          className={`flex-1 py-2 rounded-xl font-bold transition-all ${activeTab === 'pages' ? 'bg-white text-[#1b7d36] shadow-sm' : 'text-stone-400'}`}
+        >
+          Pages
+        </button>
       </div>
 
       <button 
@@ -1265,6 +1398,58 @@ function AdminScreen({ onLogout, categories, setCategories, calculators, setCalc
             ))}
           </div>
         </>
+      ) : activeTab === 'pages' ? (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm space-y-6">
+            <h3 className="text-[#1b7d36] font-bold flex items-center gap-2">
+              <ShieldCheck size={20} /> Privacy Policy
+            </h3>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-stone-400 uppercase">Content (Markdown supported)</label>
+              <textarea 
+                value={privacyPolicy.content}
+                onChange={e => setPrivacyPolicy({ ...privacyPolicy, content: e.target.value })}
+                rows={10}
+                className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20 font-mono text-sm"
+                placeholder="Enter privacy policy content..."
+              />
+            </div>
+            <button 
+              onClick={async () => {
+                await setDoc(doc(db, 'pages', 'privacy'), { title: privacyPolicy.title, content: privacyPolicy.content });
+                alert('Privacy Policy saved!');
+              }}
+              className="w-full bg-[#1b7d36] text-white py-3 rounded-2xl font-bold shadow-md"
+            >
+              Save Privacy Policy
+            </button>
+          </div>
+
+          <div className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm space-y-6">
+            <h3 className="text-[#1b7d36] font-bold flex items-center gap-2">
+              <Book size={20} /> Terms & Conditions
+            </h3>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-stone-400 uppercase">Content (Markdown supported)</label>
+              <textarea 
+                value={termsConditions.content}
+                onChange={e => setTermsConditions({ ...termsConditions, content: e.target.value })}
+                rows={10}
+                className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20 font-mono text-sm"
+                placeholder="Enter terms and conditions content..."
+              />
+            </div>
+            <button 
+              onClick={async () => {
+                await setDoc(doc(db, 'pages', 'terms'), { title: termsConditions.title, content: termsConditions.content });
+                alert('Terms & Conditions saved!');
+              }}
+              className="w-full bg-[#1b7d36] text-white py-3 rounded-2xl font-bold shadow-md"
+            >
+              Save Terms & Conditions
+            </button>
+          </div>
+        </div>
       ) : activeTab === 'calculators' ? (
         <div className="space-y-6">
           <button 
