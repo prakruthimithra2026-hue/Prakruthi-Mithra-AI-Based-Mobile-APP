@@ -625,7 +625,7 @@ function PageScreen({ content, onBack }: { content: PageContent, onBack: () => v
         <h2 className="text-xl font-bold text-stone-800">{content.title}</h2>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="prose prose-stone max-w-none markdown-body">
+        <div className="prose prose-stone max-w-none markdown-body text-justify">
           <ReactMarkdown>{content.content || '*No content yet. Please add content in the Admin Panel.*'}</ReactMarkdown>
         </div>
       </div>
@@ -2217,7 +2217,7 @@ function HandbookScreen({ onNavigate, categories }: { onNavigate: (s: Screen) =>
               {selectedItem.sections.map((section) => (
                 <div key={section.id} className="space-y-2">
                   <h4 className="text-base font-bold text-stone-800 border-l-4 border-[#1b7d36] pl-3">{section.title}</h4>
-                  <div className="text-stone-600 leading-relaxed pl-4">
+                  <div className="text-stone-600 leading-relaxed pl-4 text-justify">
                     {section.content}
                   </div>
                 </div>
