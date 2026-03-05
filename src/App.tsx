@@ -120,6 +120,15 @@ interface Calculator {
   rows: CalculatorRow[];
 }
 
+interface SignUpField {
+  id: string;
+  label: string;
+  placeholder: string;
+  type: 'text' | 'number' | 'tel' | 'email';
+  required: boolean;
+  order: number;
+}
+
 const INITIAL_HANDBOOK: HandbookCategory[] = [
   {
     id: '1',
@@ -190,6 +199,12 @@ const INITIAL_VIDEOS: VideoItem[] = [
   }
 ];
 
+const INITIAL_SIGNUP_FIELDS: SignUpField[] = [
+  { id: 'name', label: 'Full Name', placeholder: 'Enter your full name', type: 'text', required: true, order: 1 },
+  { id: 'phone', label: 'Phone Number', placeholder: 'Enter your phone number', type: 'tel', required: true, order: 2 },
+  { id: 'location', label: 'Location/Village', placeholder: 'Enter your village name', type: 'text', required: true, order: 3 },
+];
+
 const getYouTubeEmbedUrl = (url: string) => {
   if (!url) return '';
   if (url.includes('embed/')) return url;
@@ -216,6 +231,7 @@ export default function App() {
   const [videos, setVideos] = useState<VideoItem[]>(INITIAL_VIDEOS);
   const [privacyPolicy, setPrivacyPolicy] = useState<PageContent>({ id: 'privacy', title: 'Privacy Policy', content: '' });
   const [termsConditions, setTermsConditions] = useState<PageContent>({ id: 'terms', title: 'Terms and Conditions', content: '' });
+  const [signUpFields, setSignUpFields] = useState<SignUpField[]>(INITIAL_SIGNUP_FIELDS);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedCrop, setSelectedCrop] = useState<Crop | null>(null);
   const [selectedInput, setSelectedInput] = useState<NaturalInput | null>(null);
@@ -244,7 +260,15 @@ export default function App() {
 
   // Real-time Firestore listeners
   useEffect(() => {
-    if (!user) return;
+    const unsubSignUpFields = onSnapshot(collection(db, 'signup_fields'), (snapshot) => {
+      if (!snapshot.empty) {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SignUpField));
+        data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        setSignUpFields(data);
+      }
+    });
+
+    if (!user) return () => unsubSignUpFields();
 
     const unsubHandbook = onSnapshot(collection(db, 'handbook'), (snapshot) => {
       if (!snapshot.empty) {
@@ -277,6 +301,7 @@ export default function App() {
     });
 
     return () => {
+      unsubSignUpFields();
       unsubHandbook();
       unsubCalculators();
       unsubVideos();
@@ -297,7 +322,7 @@ export default function App() {
 
   const renderScreen = () => {
     if (!user) {
-      return <LoginScreen onLogin={() => {}} />;
+      return <LoginScreen onLogin={() => {}} signUpFields={signUpFields} />;
     }
 
     switch (currentScreen) {
@@ -324,6 +349,8 @@ export default function App() {
               setPrivacyPolicy={setPrivacyPolicy}
               termsConditions={termsConditions}
               setTermsConditions={setTermsConditions}
+              signUpFields={signUpFields}
+              setSignUpFields={setSignUpFields}
             />
           );
         }
@@ -952,7 +979,9 @@ function AdminScreen({
   privacyPolicy,
   setPrivacyPolicy,
   termsConditions,
-  setTermsConditions
+  setTermsConditions,
+  signUpFields,
+  setSignUpFields
 }: { 
   onLogout: () => void, 
   categories: HandbookCategory[],
@@ -964,9 +993,11 @@ function AdminScreen({
   privacyPolicy: PageContent,
   setPrivacyPolicy: React.Dispatch<React.SetStateAction<PageContent>>,
   termsConditions: PageContent,
-  setTermsConditions: React.Dispatch<React.SetStateAction<PageContent>>
+  setTermsConditions: React.Dispatch<React.SetStateAction<PageContent>>,
+  signUpFields: SignUpField[],
+  setSignUpFields: React.Dispatch<React.SetStateAction<SignUpField[]>>
 }) {
-  const [activeTab, setActiveTab] = useState<'handbook' | 'calculators' | 'videos' | 'pages'>('handbook');
+  const [activeTab, setActiveTab] = useState<'handbook' | 'calculators' | 'videos' | 'pages' | 'signup'>('handbook');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingItem, setEditingItem] = useState<{ catId: string, item: HandbookItem } | null>(null);
   const [editingCategory, setEditingCategory] = useState<HandbookCategory | null>(null);
@@ -979,6 +1010,16 @@ function AdminScreen({
   const [newVideoUrl, setNewVideoUrl] = useState('');
   const [newVideoThumbnail, setNewVideoThumbnail] = useState('');
   const [editingVideo, setEditingVideo] = useState<VideoItem | null>(null);
+
+  // Sign Up Fields management state
+  const [editingSignUpField, setEditingSignUpField] = useState<SignUpField | null>(null);
+  const [newSignUpField, setNewSignUpField] = useState<Partial<SignUpField>>({
+    label: '',
+    placeholder: '',
+    type: 'text',
+    required: true,
+    order: signUpFields.length + 1
+  });
 
   const resizeImage = (base64Str: string, maxWidth = 800, maxHeight = 600): Promise<string> => {
     return new Promise((resolve) => {
@@ -1050,6 +1091,36 @@ function AdminScreen({
     setNewVideoTitle('');
     setNewVideoUrl('');
     setNewVideoThumbnail('');
+  };
+
+  const handleSaveSignUpField = async (field: Partial<SignUpField>) => {
+    if (!field.label) return;
+    const id = field.id || Date.now().toString();
+    const finalField: SignUpField = {
+      id,
+      label: field.label || '',
+      placeholder: field.placeholder || '',
+      type: field.type || 'text',
+      required: field.required ?? true,
+      order: field.order ?? (signUpFields.length + 1)
+    };
+    await setDoc(doc(db, 'signup_fields', id), finalField);
+    setEditingSignUpField(null);
+    if (!field.id) {
+      setNewSignUpField({
+        label: '',
+        placeholder: '',
+        type: 'text',
+        required: true,
+        order: signUpFields.length + 1
+      });
+    }
+  };
+
+  const handleDeleteSignUpField = async (id: string) => {
+    if (confirm('Are you sure you want to delete this field?')) {
+      await deleteDoc(doc(db, 'signup_fields', id));
+    }
   };
 
   const handleDeleteVideo = async (id: string) => {
@@ -1231,6 +1302,12 @@ function AdminScreen({
           className={`flex-1 py-2 rounded-xl font-bold transition-all ${activeTab === 'pages' ? 'bg-white text-[#1b7d36] shadow-sm' : 'text-stone-400'}`}
         >
           Pages
+        </button>
+        <button 
+          onClick={() => setActiveTab('signup')}
+          className={`flex-1 py-2 rounded-xl font-bold transition-all ${activeTab === 'signup' ? 'bg-white text-[#1b7d36] shadow-sm' : 'text-stone-400'}`}
+        >
+          Sign Up
         </button>
       </div>
 
@@ -1477,7 +1554,7 @@ function AdminScreen({
             ))}
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'videos' ? (
         <div className="space-y-6">
           {/* Video Editor Modal-like section */}
           {editingVideo && (
@@ -1610,6 +1687,130 @@ function AdminScreen({
             {videos.length === 0 && (
               <p className="text-center text-stone-400 text-xs py-10 italic">No videos added yet.</p>
             )}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <h3 className="text-[#1b7d36] font-bold">Sign Up Form Fields</h3>
+          
+          {/* Field Editor */}
+          {(editingSignUpField || !signUpFields.find(f => f.id === 'new')) && (
+            <div className="bg-emerald-50 p-6 rounded-[32px] border border-emerald-200 shadow-sm space-y-4">
+              <h4 className="text-emerald-800 font-bold">
+                {editingSignUpField ? 'Edit Field' : 'Add New Field'}
+              </h4>
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-emerald-600 uppercase">Label (Telugu/English)</label>
+                  <input 
+                    type="text" 
+                    value={editingSignUpField ? editingSignUpField.label : newSignUpField.label}
+                    onChange={e => editingSignUpField 
+                      ? setEditingSignUpField({ ...editingSignUpField, label: e.target.value })
+                      : setNewSignUpField({ ...newSignUpField, label: e.target.value })
+                    }
+                    placeholder="e.g. పూర్తి పేరు (Full Name)"
+                    className="w-full bg-white border border-emerald-200 rounded-2xl px-5 py-3 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-emerald-600 uppercase">Placeholder</label>
+                  <input 
+                    type="text" 
+                    value={editingSignUpField ? editingSignUpField.placeholder : newSignUpField.placeholder}
+                    onChange={e => editingSignUpField 
+                      ? setEditingSignUpField({ ...editingSignUpField, placeholder: e.target.value })
+                      : setNewSignUpField({ ...newSignUpField, placeholder: e.target.value })
+                    }
+                    placeholder="e.g. మీ పేరును నమోదు చేయండి"
+                    className="w-full bg-white border border-emerald-200 rounded-2xl px-5 py-3 focus:outline-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-emerald-600 uppercase">Type</label>
+                    <select 
+                      value={editingSignUpField ? editingSignUpField.type : newSignUpField.type}
+                      onChange={e => editingSignUpField 
+                        ? setEditingSignUpField({ ...editingSignUpField, type: e.target.value as any })
+                        : setNewSignUpField({ ...newSignUpField, type: e.target.value as any })
+                      }
+                      className="w-full bg-white border border-emerald-200 rounded-2xl px-5 py-3 focus:outline-none"
+                    >
+                      <option value="text">Text</option>
+                      <option value="number">Number</option>
+                      <option value="tel">Phone</option>
+                      <option value="email">Email</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-emerald-600 uppercase">Order</label>
+                    <input 
+                      type="number" 
+                      value={editingSignUpField ? editingSignUpField.order : newSignUpField.order}
+                      onChange={e => editingSignUpField 
+                        ? setEditingSignUpField({ ...editingSignUpField, order: parseInt(e.target.value) })
+                        : setNewSignUpField({ ...newSignUpField, order: parseInt(e.target.value) })
+                      }
+                      className="w-full bg-white border border-emerald-200 rounded-2xl px-5 py-3 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="checkbox" 
+                    id="required-check"
+                    checked={editingSignUpField ? editingSignUpField.required : newSignUpField.required}
+                    onChange={e => editingSignUpField 
+                      ? setEditingSignUpField({ ...editingSignUpField, required: e.target.checked })
+                      : setNewSignUpField({ ...newSignUpField, required: e.target.checked })
+                    }
+                  />
+                  <label htmlFor="required-check" className="text-sm font-bold text-emerald-800">Required Field</label>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    onClick={() => handleSaveSignUpField(editingSignUpField || newSignUpField)}
+                    className="flex-1 bg-emerald-600 text-white py-3 rounded-2xl font-bold shadow-md"
+                  >
+                    {editingSignUpField ? 'Update' : 'Add Field'}
+                  </button>
+                  {editingSignUpField && (
+                    <button 
+                      onClick={() => setEditingSignUpField(null)}
+                      className="flex-1 bg-stone-200 text-stone-600 py-3 rounded-2xl font-bold"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {signUpFields.map(field => (
+              <div key={field.id} className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm flex items-center justify-between">
+                <div className="space-y-1">
+                  <h4 className="font-bold text-stone-800">{field.label}</h4>
+                  <p className="text-xs text-stone-400">Type: {field.type} • Order: {field.order} • {field.required ? 'Required' : 'Optional'}</p>
+                </div>
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => setEditingSignUpField(field)}
+                    className="text-blue-500 font-bold text-sm"
+                  >
+                    Edit
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteSignUpField(field.id)}
+                    className="text-rose-500 font-bold text-sm"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1799,9 +2000,10 @@ function ItemEditor({ catId, item, onSave, onCancel }: {
   );
 }
 
-function LoginScreen({ onLogin }: { onLogin: () => void }) {
+function LoginScreen({ onLogin, signUpFields }: { onLogin: () => void, signUpFields: SignUpField[] }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [formData, setFormData] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -1822,6 +2024,14 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
         setIsForgotPassword(false);
       } else if (isSignUp) {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        
+        // Save additional user data to Firestore
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          email,
+          ...formData,
+          createdAt: new Date().toISOString()
+        });
+
         await sendEmailVerification(userCredential.user);
         await signOut(auth); // Sign out immediately as per requirement
         setVerificationEmail(email);
@@ -1928,6 +2138,21 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
               />
             </div>
           )}
+          
+          {isSignUp && !isForgotPassword && signUpFields.map(field => (
+            <div key={field.id} className="space-y-1">
+              <label className="text-sm font-bold text-stone-600 ml-1">{field.label}</label>
+              <input 
+                type={field.type}
+                value={formData[field.id] || ''}
+                onChange={e => setFormData({ ...formData, [field.id]: e.target.value })}
+                className="w-full bg-[#f8f9fa] border border-stone-200 rounded-2xl px-5 py-3 focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
+                placeholder={field.placeholder}
+                required={field.required}
+              />
+            </div>
+          ))}
+
           {error && <p className="text-rose-500 text-xs font-bold text-center">{error}</p>}
           {success && <p className="text-[#1b7d36] text-xs font-bold text-center">{success}</p>}
           <button 
