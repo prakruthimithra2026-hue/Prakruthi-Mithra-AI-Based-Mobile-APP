@@ -1234,13 +1234,6 @@ function AdminScreen({
         </button>
       </div>
 
-      <button 
-        onClick={handleReset}
-        className="w-full bg-rose-50 text-rose-500 py-3 rounded-2xl font-bold border border-rose-100 hover:bg-rose-100 transition-colors"
-      >
-        Reset All Data
-      </button>
-
       {activeTab === 'handbook' ? (
         <>
           {/* Category Editor Modal-like section */}
