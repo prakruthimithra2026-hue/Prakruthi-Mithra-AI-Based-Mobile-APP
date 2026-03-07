@@ -61,11 +61,12 @@ export const chatWithPrakritiMitra = async (
 
 export const generateSpeech = async (text: string) => {
   try {
+    console.log("Generating speech for text length:", text.length);
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
       config: {
-        responseModalities: [Modality.AUDIO],
+        responseModalities: ['AUDIO'],
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: { voiceName: 'Kore' },
@@ -75,6 +76,9 @@ export const generateSpeech = async (text: string) => {
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Audio) {
+      console.warn("No audio data received from Gemini TTS");
+    }
     return base64Audio;
   } catch (error) {
     console.error("Error generating speech:", error);

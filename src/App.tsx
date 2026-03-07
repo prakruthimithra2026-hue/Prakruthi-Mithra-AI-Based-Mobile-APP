@@ -266,6 +266,8 @@ export default function App() {
         data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         setSignUpFields(data);
       }
+    }, (error) => {
+      console.warn("Firestore: signup_fields access restricted. Using defaults.", error.message);
     });
 
     if (!user) return () => unsubSignUpFields();
@@ -276,21 +278,21 @@ export default function App() {
         data.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         setHandbookData(data);
       }
-    });
+    }, (error) => console.error("Firestore: handbook access restricted.", error.message));
 
     const unsubCalculators = onSnapshot(collection(db, 'calculators'), (snapshot) => {
       if (!snapshot.empty) {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Calculator));
         setCalculators(data);
       }
-    });
+    }, (error) => console.error("Firestore: calculators access restricted.", error.message));
 
     const unsubVideos = onSnapshot(collection(db, 'videos'), (snapshot) => {
       if (!snapshot.empty) {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VideoItem));
         setVideos(data);
       }
-    });
+    }, (error) => console.error("Firestore: videos access restricted.", error.message));
 
     const unsubPages = onSnapshot(collection(db, 'pages'), (snapshot) => {
       snapshot.docs.forEach(doc => {
@@ -298,7 +300,7 @@ export default function App() {
         if (doc.id === 'privacy') setPrivacyPolicy({ id: 'privacy', ...data });
         if (doc.id === 'terms') setTermsConditions({ id: 'terms', ...data });
       });
-    });
+    }, (error) => console.error("Firestore: pages access restricted.", error.message));
 
     return () => {
       unsubSignUpFields();
@@ -567,30 +569,76 @@ function BottomNavButton({ icon, label, active, onClick }: { icon: React.ReactNo
   );
 }
 
+const stripMarkdown = (text: string) => {
+  return text
+    .replace(/#+\s/g, '') // Headers
+    .replace(/\*\*/g, '') // Bold
+    .replace(/\*/g, '') // Italic
+    .replace(/__/g, '') // Bold
+    .replace(/_/g, '') // Italic
+    .replace(/`{1,3}.*?`{1,3}/gs, '') // Code blocks
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Links
+    .replace(/!\[.*?\]\(.*?\)/g, '') // Images
+    .replace(/>\s/g, '') // Blockquotes
+    .replace(/-\s/g, '') // List items
+    .replace(/\d+\.\s/g, '') // Numbered list items
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\n+/g, ' ')
+    .replace(/[^\u0000-\u007F\u0C00-\u0C7F\s.,?!]/g, '') // Keep ASCII, Telugu, and basic punctuation
+    .trim();
+};
+
+const splitText = (text: string, maxLength: number = 400) => {
+  // Split by common sentence terminators in English and Telugu
+  const parts = text.split(/([.?!।\n])/);
+  const chunks: string[] = [];
+  let currentChunk = "";
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if ((currentChunk + part).length > maxLength && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = "";
+    }
+    currentChunk += part;
+  }
+  if (currentChunk.trim().length > 0) {
+    chunks.push(currentChunk.trim());
+  }
+  return chunks.filter(c => c.length > 0);
+};
+
 function TTSButton({ text }: { text: string }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
+  const isPlayingRef = useRef(false);
 
-  const handleSpeak = async () => {
-    if (isPlaying) {
+  const stopPlayback = () => {
+    isPlayingRef.current = false;
+    setIsPlaying(false);
+    try {
       sourceNodeRef.current?.stop();
-      setIsPlaying(false);
-      return;
+    } catch (e) {
+      // Ignore
     }
+  };
 
-    setIsLoading(true);
-    const base64Audio = await generateSpeech(text);
-    setIsLoading(false);
+  const playAudioChunk = async (base64Audio: string) => {
+    return new Promise<void>((resolve, reject) => {
+      if (!isPlayingRef.current) return resolve();
 
-    if (base64Audio) {
       try {
         if (!audioCtxRef.current) {
           audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
         }
         
         const audioCtx = audioCtxRef.current;
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+
         const binaryString = window.atob(base64Audio);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
@@ -598,8 +646,8 @@ function TTSButton({ text }: { text: string }) {
           bytes[i] = binaryString.charCodeAt(i);
         }
         
-        // Gemini TTS returns 16-bit PCM, 24000Hz
-        const pcm16 = new Int16Array(bytes.buffer);
+        const buffer = bytes.buffer;
+        const pcm16 = new Int16Array(buffer, 0, Math.floor(buffer.byteLength / 2));
         const float32 = new Float32Array(pcm16.length);
         for (let i = 0; i < pcm16.length; i++) {
           float32[i] = pcm16[i] / 32768.0;
@@ -611,15 +659,51 @@ function TTSButton({ text }: { text: string }) {
         const source = audioCtx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(audioCtx.destination);
-        source.onended = () => setIsPlaying(false);
-        source.start();
         
+        source.onended = () => {
+          resolve();
+        };
+
         sourceNodeRef.current = source;
-        setIsPlaying(true);
+        source.start();
       } catch (err) {
-        console.error("Error playing audio:", err);
-        setIsPlaying(false);
+        reject(err);
       }
+    });
+  };
+
+  const handleSpeak = async () => {
+    if (!text) return;
+
+    if (isPlaying) {
+      stopPlayback();
+      return;
+    }
+
+    setIsLoading(true);
+    isPlayingRef.current = true;
+    setIsPlaying(true);
+
+    try {
+      const cleanText = stripMarkdown(text);
+      const chunks = splitText(cleanText);
+      
+      setIsLoading(false);
+
+      for (const chunk of chunks) {
+        if (!isPlayingRef.current) break;
+        
+        const base64Audio = await generateSpeech(chunk);
+        if (!base64Audio || !isPlayingRef.current) continue;
+
+        await playAudioChunk(base64Audio);
+      }
+    } catch (err) {
+      console.error("TTS Error:", err);
+    } finally {
+      setIsLoading(false);
+      setIsPlaying(false);
+      isPlayingRef.current = false;
     }
   };
 
@@ -1749,8 +1833,8 @@ function AdminScreen({
                       type="number" 
                       value={editingSignUpField ? editingSignUpField.order : newSignUpField.order}
                       onChange={e => editingSignUpField 
-                        ? setEditingSignUpField({ ...editingSignUpField, order: parseInt(e.target.value) })
-                        : setNewSignUpField({ ...newSignUpField, order: parseInt(e.target.value) })
+                        ? setEditingSignUpField({ ...editingSignUpField, order: parseInt(e.target.value) || 0 })
+                        : setNewSignUpField({ ...newSignUpField, order: parseInt(e.target.value) || 0 })
                       }
                       className="w-full bg-white border border-emerald-200 rounded-2xl px-5 py-3 focus:outline-none"
                     />
