@@ -9,12 +9,10 @@ import {
   Home, 
   Sprout, 
   Droplets, 
-  MessageSquare, 
   Info, 
   Menu, 
   X, 
   ChevronRight, 
-  Send,
   Leaf,
   Bug,
   BookOpen,
@@ -30,23 +28,20 @@ import {
   Cloud,
   CloudRain,
   CloudSun,
+  CloudOff,
   Wind,
   Video,
   Play,
   Share2,
   AlertTriangle,
   Megaphone,
-  Volume2,
-  VolumeX,
-  Loader2,
-  Image as ImageIcon,
-  Paperclip,
   ArrowUp,
   ArrowDown,
-  Mail
+  Mail,
+  Bot,
+  MessageSquare
 } from 'lucide-react';
 import { CROPS, NATURAL_INPUTS, Crop, NaturalInput } from './data';
-import { chatWithPrakritiMitra, generateSpeech } from './services/geminiService';
 import ReactMarkdown from 'react-markdown';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -70,7 +65,11 @@ import {
   orderBy
 } from 'firebase/firestore';
 
-type Screen = 'home' | 'crops' | 'inputs' | 'chat' | 'handbook' | 'admin' | 'videos' | 'privacy' | 'terms';
+import AIAdvisor from './components/AIAdvisor';
+import Forum from './components/Forum';
+import PlantDoctor from './components/PlantDoctor';
+
+type Screen = 'home' | 'crops' | 'inputs' | 'handbook' | 'admin' | 'videos' | 'privacy' | 'terms' | 'advisor' | 'forum' | 'doctor';
 
 interface PageContent {
   id: string;
@@ -98,6 +97,36 @@ interface HandbookItem {
   image?: string;
   sections: HandbookSection[];
 }
+
+const resizeImage = (base64Str: string, maxWidth = 800, maxHeight = 600): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height *= maxWidth / width;
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width *= maxHeight / height;
+          height = maxHeight;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+  });
+};
 
 interface HandbookCategory {
   id: string;
@@ -225,7 +254,6 @@ const getYouTubeEmbedUrl = (url: string) => {
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [user, setUser] = useState<User | null>(null);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [handbookData, setHandbookData] = useState<HandbookCategory[]>(INITIAL_HANDBOOK);
   const [calculators, setCalculators] = useState<Calculator[]>(INITIAL_CALCULATORS);
   const [videos, setVideos] = useState<VideoItem[]>(INITIAL_VIDEOS);
@@ -238,22 +266,9 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      // Bypass verification for admin email
-      const isAdmin = currentUser?.email === 'prakruthimithra2026@gmail.com';
-      
-      if (currentUser && !currentUser.emailVerified && !isAdmin) {
-        // If user is logged in but not verified, sign them out
-        signOut(auth);
-        setUser(null);
-        setIsAdminLoggedIn(false);
-      } else {
-        setUser(currentUser);
-        if (currentUser) {
-          setIsAdminLoggedIn(true);
-        } else {
-          setIsAdminLoggedIn(false);
-        }
-      }
+      // Allow all users to access the app for now to fix access issues on other devices
+      // We still track if they are admin for the admin panel
+      setUser(currentUser);
     });
     return () => unsubscribe();
   }, []);
@@ -331,9 +346,11 @@ export default function App() {
       case 'home': return <HomeScreen onNavigate={setCurrentScreen} calculators={calculators} />;
       case 'crops': return <CropsScreen onSelectCrop={setSelectedCrop} />;
       case 'inputs': return <InputsScreen onSelectInput={setSelectedInput} />;
-      case 'chat': return <ChatScreen />;
       case 'handbook': return <HandbookScreen onNavigate={setCurrentScreen} categories={handbookData} />;
       case 'videos': return <VideosScreen videos={videos} />;
+      case 'advisor': return <AIAdvisor />;
+      case 'forum': return <Forum user={user} />;
+      case 'doctor': return <PlantDoctor />;
       case 'privacy': return <PageScreen content={privacyPolicy} onBack={() => setCurrentScreen('home')} />;
       case 'terms': return <PageScreen content={termsConditions} onBack={() => setCurrentScreen('home')} />;
       case 'admin': 
@@ -351,8 +368,6 @@ export default function App() {
               setPrivacyPolicy={setPrivacyPolicy}
               termsConditions={termsConditions}
               setTermsConditions={setTermsConditions}
-              signUpFields={signUpFields}
-              setSignUpFields={setSignUpFields}
             />
           );
         }
@@ -364,7 +379,7 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col bg-[#f8f9fa] overflow-hidden font-sans">
       {/* Header */}
-      <header className="bg-[#1b7d36] px-4 py-3 flex items-center justify-between sticky top-0 z-50 text-white shadow-md">
+      <header className="bg-[#1b5e20] px-4 py-3 flex items-center justify-between sticky top-0 z-50 text-white shadow-md">
         <div className="flex items-center gap-3">
           {currentScreen !== 'home' && (
             <button onClick={() => setCurrentScreen('home')} className="p-1 hover:bg-white/10 rounded-full transition-colors">
@@ -418,6 +433,22 @@ export default function App() {
                 >
                   <Home size={20} />
                   <span className="font-medium">Home</span>
+                </button>
+
+                <button 
+                  onClick={() => { setCurrentScreen('forum'); setIsMenuOpen(false); }}
+                  className="w-full px-6 py-4 flex items-center gap-4 hover:bg-stone-50 text-stone-700 transition-colors"
+                >
+                  <MessageSquare size={20} />
+                  <span className="font-medium">Community Forum</span>
+                </button>
+
+                <button 
+                  onClick={() => { setCurrentScreen('doctor'); setIsMenuOpen(false); }}
+                  className="w-full px-6 py-4 flex items-center gap-4 hover:bg-stone-50 text-stone-700 transition-colors"
+                >
+                  <ShieldCheck size={20} />
+                  <span className="font-medium">Plant Doctor (AI)</span>
                 </button>
                 
                 {user?.email === 'prakruthimithra2026@gmail.com' && (
@@ -534,15 +565,21 @@ export default function App() {
         />
         <BottomNavButton 
           icon={<MessageSquare size={24} />} 
-          label="సలహాదారు" 
-          active={currentScreen === 'chat'} 
-          onClick={() => setCurrentScreen('chat')} 
+          label="ఫోరమ్" 
+          active={currentScreen === 'forum'} 
+          onClick={() => setCurrentScreen('forum')} 
         />
         <BottomNavButton 
-          icon={<Video size={24} />} 
-          label="వీడియోలు" 
-          active={currentScreen === 'videos'} 
-          onClick={() => setCurrentScreen('videos')} 
+          icon={<Bot size={24} />} 
+          label="సలహాదారు" 
+          active={currentScreen === 'advisor'} 
+          onClick={() => setCurrentScreen('advisor')} 
+        />
+        <BottomNavButton 
+          icon={<ShieldCheck size={24} />} 
+          label="డాక్టర్" 
+          active={currentScreen === 'doctor'} 
+          onClick={() => setCurrentScreen('doctor')} 
         />
         <BottomNavButton 
           icon={<Book size={24} />} 
@@ -565,163 +602,6 @@ function BottomNavButton({ icon, label, active, onClick }: { icon: React.ReactNo
         {icon}
       </div>
       <span className="text-[10px] font-medium">{label}</span>
-    </button>
-  );
-}
-
-const stripMarkdown = (text: string) => {
-  return text
-    .replace(/#+\s/g, '') // Headers
-    .replace(/\*\*/g, '') // Bold
-    .replace(/\*/g, '') // Italic
-    .replace(/__/g, '') // Bold
-    .replace(/_/g, '') // Italic
-    .replace(/`{1,3}.*?`{1,3}/gs, '') // Code blocks
-    .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Links
-    .replace(/!\[.*?\]\(.*?\)/g, '') // Images
-    .replace(/>\s/g, '') // Blockquotes
-    .replace(/-\s/g, '') // List items
-    .replace(/\d+\.\s/g, '') // Numbered list items
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\n+/g, ' ')
-    .replace(/[^\u0000-\u007F\u0C00-\u0C7F\s.,?!]/g, '') // Keep ASCII, Telugu, and basic punctuation
-    .trim();
-};
-
-const splitText = (text: string, maxLength: number = 400) => {
-  // Split by common sentence terminators in English and Telugu
-  const parts = text.split(/([.?!।\n])/);
-  const chunks: string[] = [];
-  let currentChunk = "";
-
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if ((currentChunk + part).length > maxLength && currentChunk.length > 0) {
-      chunks.push(currentChunk.trim());
-      currentChunk = "";
-    }
-    currentChunk += part;
-  }
-  if (currentChunk.trim().length > 0) {
-    chunks.push(currentChunk.trim());
-  }
-  return chunks.filter(c => c.length > 0);
-};
-
-function TTSButton({ text }: { text: string }) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
-  const isPlayingRef = useRef(false);
-
-  const stopPlayback = () => {
-    isPlayingRef.current = false;
-    setIsPlaying(false);
-    try {
-      sourceNodeRef.current?.stop();
-    } catch (e) {
-      // Ignore
-    }
-  };
-
-  const playAudioChunk = async (base64Audio: string) => {
-    return new Promise<void>((resolve, reject) => {
-      if (!isPlayingRef.current) return resolve();
-
-      try {
-        if (!audioCtxRef.current) {
-          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
-        
-        const audioCtx = audioCtxRef.current;
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume();
-        }
-
-        const binaryString = window.atob(base64Audio);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        
-        const buffer = bytes.buffer;
-        const pcm16 = new Int16Array(buffer, 0, Math.floor(buffer.byteLength / 2));
-        const float32 = new Float32Array(pcm16.length);
-        for (let i = 0; i < pcm16.length; i++) {
-          float32[i] = pcm16[i] / 32768.0;
-        }
-
-        const audioBuffer = audioCtx.createBuffer(1, float32.length, 24000);
-        audioBuffer.getChannelData(0).set(float32);
-
-        const source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioCtx.destination);
-        
-        source.onended = () => {
-          resolve();
-        };
-
-        sourceNodeRef.current = source;
-        source.start();
-      } catch (err) {
-        reject(err);
-      }
-    });
-  };
-
-  const handleSpeak = async () => {
-    if (!text) return;
-
-    if (isPlaying) {
-      stopPlayback();
-      return;
-    }
-
-    setIsLoading(true);
-    isPlayingRef.current = true;
-    setIsPlaying(true);
-
-    try {
-      const cleanText = stripMarkdown(text);
-      const chunks = splitText(cleanText);
-      
-      setIsLoading(false);
-
-      for (const chunk of chunks) {
-        if (!isPlayingRef.current) break;
-        
-        const base64Audio = await generateSpeech(chunk);
-        if (!base64Audio || !isPlayingRef.current) continue;
-
-        await playAudioChunk(base64Audio);
-      }
-    } catch (err) {
-      console.error("TTS Error:", err);
-    } finally {
-      setIsLoading(false);
-      setIsPlaying(false);
-      isPlayingRef.current = false;
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      sourceNodeRef.current?.stop();
-      audioCtxRef.current?.close();
-    };
-  }, []);
-
-  return (
-    <button 
-      onClick={handleSpeak}
-      disabled={isLoading}
-      className="p-1.5 hover:bg-black/5 rounded-full transition-colors text-inherit opacity-70 hover:opacity-100"
-      title="చదవండి (Read Aloud)"
-    >
-      {isLoading ? <Loader2 size={16} className="animate-spin" /> : isPlaying ? <VolumeX size={16} /> : <Volume2 size={16} />}
     </button>
   );
 }
@@ -753,46 +633,56 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
   const [locationName, setLocationName] = useState<string>('');
 
   useEffect(() => {
+    let isMounted = true;
     const fetchWeather = async (lat: number, lon: number) => {
       setLoadingWeather(true);
       try {
-        // Fetch Weather
-        const weatherPromise = fetch(
+        // Fetch Weather - Simplified to avoid header issues
+        const weatherResponse = await fetch(
           `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=10`
         );
+        
+        if (!weatherResponse.ok) {
+          throw new Error(`Weather API responded with status: ${weatherResponse.status}`);
+        }
+        
+        const weatherData = await weatherResponse.json();
 
         // Fetch Location Name (Reverse Geocoding)
-        const geoPromise = fetch(
+        // Note: Removed User-Agent as it's a forbidden header in browsers
+        const geoResponse = await fetch(
           `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=12&accept-language=te`
-        ).then(res => res.json()).catch(() => null);
-
-        const [weatherRes, geoData] = await Promise.all([weatherPromise, geoPromise]);
+        ).catch(() => null);
         
-        if (!weatherRes.ok) throw new Error('Weather API response not ok');
-        const data = await weatherRes.json();
-        setWeather(data.current);
+        const geoData = geoResponse && geoResponse.ok ? await geoResponse.json() : null;
+        
+        if (!isMounted) return;
+
+        if (weatherData && weatherData.current) {
+          setWeather(weatherData.current);
+          const daily = weatherData.daily;
+          if (daily && daily.time) {
+            const forecastData = daily.time.map((time: string, i: number) => ({
+              date: time,
+              code: daily.weather_code[i],
+              max: daily.temperature_2m_max[i],
+              min: daily.temperature_2m_min[i]
+            }));
+            setForecast(forecastData);
+          }
+        }
         
         if (geoData) {
           const addr = geoData.address;
-          const city = addr.city || addr.town || addr.village || addr.suburb || addr.neighbourhood || addr.county || 'తెలియని ప్రాంతం';
+          const city = addr.city || addr.town || addr.village || addr.suburb || addr.neighbourhood || addr.county || 'ప్రస్తుత ప్రాంతం';
           setLocationName(city);
         } else {
-          setLocationName(lat === 16.5062 ? 'విజయవాడ' : 'ప్రస్తుత ప్రాంతం');
+          setLocationName(lat.toFixed(2) === '16.51' ? 'విజయవాడ' : 'ప్రస్తుత ప్రాంతం');
         }
-        
-        const daily = data.daily;
-        const forecastData = daily.time.map((time: string, i: number) => ({
-          date: time,
-          code: daily.weather_code[i],
-          max: daily.temperature_2m_max[i],
-          min: daily.temperature_2m_min[i]
-        }));
-        setForecast(forecastData);
       } catch (error) {
-        console.error('Error fetching weather:', error);
-        // Fallback or silent fail
+        console.error('Weather fetch failed:', error);
       } finally {
-        setLoadingWeather(false);
+        if (isMounted) setLoadingWeather(false);
       }
     };
 
@@ -804,6 +694,8 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
     } else {
       fetchWeather(16.5062, 80.6480);
     }
+
+    return () => { isMounted = false; };
   }, []);
 
   const getWeatherIcon = (code: number, size = 24) => {
@@ -839,10 +731,10 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'px',
-        format: [canvas.width / 2, canvas.height / 2]
+        format: [Math.floor(canvas.width / 2), Math.floor(canvas.height / 2)]
       });
 
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
+      pdf.addImage(imgData, 'PNG', 0, 0, Math.floor(canvas.width / 2), Math.floor(canvas.height / 2));
       
       const pdfBlob = pdf.output('blob');
       const fileName = `${calc.title.replace(/\s+/g, '_')}_Report.pdf`;
@@ -890,16 +782,10 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
       {/* Hero Section */}
       <section className="bg-[#1b7d36] text-white p-8 rounded-[40px] shadow-lg relative overflow-hidden">
         <div className="relative z-10">
-          <h2 className="text-xl font-bold mb-3">శుభోదయం రైతు సోదరా!</h2>
+          <h2 className="text-[26px] font-bold mb-3 leading-tight">నమస్కారం రైతు సోదరా!</h2>
           <p className="opacity-90 mb-8 text-sm leading-relaxed max-w-[280px]">
             APCNF ప్రకృతి వ్యవసాయంతో భూమిని రక్షించండి, ఆరోగ్యాన్ని కాపాడండి.
           </p>
-          <button 
-            onClick={() => onNavigate('chat')}
-            className="bg-white text-stone-800 px-10 py-3.5 rounded-full font-bold shadow-md hover:scale-105 transition-transform text-sm"
-          >
-            AI తో మాట్లాడండి
-          </button>
         </div>
         <div className="absolute -bottom-10 -right-10 opacity-10">
           <Sprout size={200} />
@@ -923,15 +809,21 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
                   </div>
                 )}
                 <div className="flex items-baseline gap-1">
-                  <span className="text-xl font-bold text-stone-800">{weather?.temperature_2m}°C</span>
+                  {weather ? (
+                    <span className="text-xl font-bold text-stone-800">{weather.temperature_2m}°C</span>
+                  ) : (
+                    <span className="text-sm text-stone-400">డేటా అందుబాటులో లేదు</span>
+                  )}
                 </div>
-                <p className="text-stone-500 font-medium text-sm">{getWeatherText(weather?.weather_code)}</p>
+                <p className="text-stone-500 font-medium text-sm">
+                  {weather ? getWeatherText(weather.weather_code) : 'వాతావరణ సమాచారం లోడ్ కాలేదు'}
+                </p>
               </div>
               <div className="flex flex-col items-center">
-                {getWeatherIcon(weather?.weather_code, 40)}
+                {weather ? getWeatherIcon(weather.weather_code, 40) : <CloudOff className="text-stone-300" size={40} />}
               </div>
               <div className="text-right space-y-1">
-                <p className="text-sm text-stone-400">తేమ: {weather?.relative_humidity_2m}%</p>
+                <p className="text-sm text-stone-400">తేమ: {weather ? weather.relative_humidity_2m : '--'}%</p>
                 <p className="text-sm text-emerald-600 font-bold">✓ ప్రకృతి వ్యవసాయానికి అనుకూలం</p>
                 <button 
                   onClick={() => setShowForecast(true)}
@@ -943,6 +835,76 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
             </>
           )}
         </div>
+      </div>
+
+      {/* Community Forum CTA */}
+      <section 
+        onClick={() => onNavigate('forum')}
+        className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm flex items-center gap-4 cursor-pointer hover:border-[#1b7d36]/30 transition-all group"
+      >
+        <div className="w-14 h-14 bg-[#e8f5e9] rounded-2xl flex items-center justify-center text-[#1b7d36] group-hover:scale-110 transition-transform">
+          <MessageSquare size={28} />
+        </div>
+        <div className="flex-1">
+          <h3 className="text-base font-bold text-stone-800">రైతు చర్చా వేదిక (Forum)</h3>
+          <p className="text-xs text-stone-500">మీ అనుభవాలను పంచుకోండి, ఇతరుల నుండి నేర్చుకోండి.</p>
+        </div>
+        <ChevronRight className="text-stone-300 group-hover:text-[#1b7d36] transition-colors" size={20} />
+      </section>
+
+      {/* Quick Access Grid */}
+      <div className="grid grid-cols-2 gap-4">
+        <button 
+          onClick={() => onNavigate('doctor')}
+          className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm flex flex-col items-center text-center gap-3 hover:border-[#1b7d36]/30 transition-all group"
+        >
+          <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600 group-hover:scale-110 transition-transform">
+            <ShieldCheck size={24} />
+          </div>
+          <div>
+            <h4 className="font-bold text-stone-900 text-sm">మొక్కల డాక్టర్</h4>
+            <p className="text-[10px] text-stone-400">Plant Doctor (AI)</p>
+          </div>
+        </button>
+
+        <button 
+          onClick={() => onNavigate('advisor')}
+          className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm flex flex-col items-center text-center gap-3 hover:border-[#1b7d36]/30 transition-all group"
+        >
+          <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
+            <Bot size={24} />
+          </div>
+          <div>
+            <h4 className="font-bold text-stone-900 text-sm">AI సలహాదారు</h4>
+            <p className="text-[10px] text-stone-400">AI Advisor</p>
+          </div>
+        </button>
+
+        <button 
+          onClick={() => onNavigate('crops')}
+          className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm flex flex-col items-center text-center gap-3 hover:border-[#1b7d36]/30 transition-all group"
+        >
+          <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
+            <Leaf size={24} />
+          </div>
+          <div>
+            <h4 className="font-bold text-stone-900 text-sm">పంటలు</h4>
+            <p className="text-[10px] text-stone-400">Crops</p>
+          </div>
+        </button>
+
+        <button 
+          onClick={() => onNavigate('inputs')}
+          className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm flex flex-col items-center text-center gap-3 hover:border-[#1b7d36]/30 transition-all group"
+        >
+          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
+            <Droplets size={24} />
+          </div>
+          <div>
+            <h4 className="font-bold text-stone-900 text-sm">కషాయాలు</h4>
+            <p className="text-[10px] text-stone-400">Inputs</p>
+          </div>
+        </button>
       </div>
 
       {/* Forecast Modal */}
@@ -991,7 +953,7 @@ function HomeScreen({ onNavigate, calculators }: { onNavigate: (s: Screen) => vo
               <input 
                 type="number" 
                 value={acres}
-                onChange={e => setAcres(parseFloat(e.target.value) || 0)}
+                onChange={e => setAcres(Math.max(0, parseFloat(e.target.value) || 0))}
                 className="bg-white text-[#1b7d36] rounded-2xl px-4 py-2 border border-[#1b7d36] w-[100px] text-center font-bold text-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20"
               />
             </div>
@@ -1063,9 +1025,7 @@ function AdminScreen({
   privacyPolicy,
   setPrivacyPolicy,
   termsConditions,
-  setTermsConditions,
-  signUpFields,
-  setSignUpFields
+  setTermsConditions
 }: { 
   onLogout: () => void, 
   categories: HandbookCategory[],
@@ -1077,11 +1037,9 @@ function AdminScreen({
   privacyPolicy: PageContent,
   setPrivacyPolicy: React.Dispatch<React.SetStateAction<PageContent>>,
   termsConditions: PageContent,
-  setTermsConditions: React.Dispatch<React.SetStateAction<PageContent>>,
-  signUpFields: SignUpField[],
-  setSignUpFields: React.Dispatch<React.SetStateAction<SignUpField[]>>
+  setTermsConditions: React.Dispatch<React.SetStateAction<PageContent>>
 }) {
-  const [activeTab, setActiveTab] = useState<'handbook' | 'calculators' | 'videos' | 'pages' | 'signup'>('handbook');
+  const [activeTab, setActiveTab] = useState<'handbook' | 'calculators' | 'videos' | 'pages'>('handbook');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingItem, setEditingItem] = useState<{ catId: string, item: HandbookItem } | null>(null);
   const [editingCategory, setEditingCategory] = useState<HandbookCategory | null>(null);
@@ -1094,46 +1052,7 @@ function AdminScreen({
   const [newVideoUrl, setNewVideoUrl] = useState('');
   const [newVideoThumbnail, setNewVideoThumbnail] = useState('');
   const [editingVideo, setEditingVideo] = useState<VideoItem | null>(null);
-
-  // Sign Up Fields management state
-  const [editingSignUpField, setEditingSignUpField] = useState<SignUpField | null>(null);
-  const [newSignUpField, setNewSignUpField] = useState<Partial<SignUpField>>({
-    label: '',
-    placeholder: '',
-    type: 'text',
-    required: true,
-    order: signUpFields.length + 1
-  });
-
-  const resizeImage = (base64Str: string, maxWidth = 800, maxHeight = 600): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = base64Str;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > maxWidth) {
-            height *= maxWidth / width;
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width *= maxHeight / height;
-            height = maxHeight;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7)); // Compress to JPEG with 0.7 quality
-      };
-    });
-  };
+  const [isResetting, setIsResetting] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
     const file = e.target.files?.[0];
@@ -1149,15 +1068,30 @@ function AdminScreen({
 
   const handleReset = async () => {
     if (confirm('Are you sure you want to reset all data? This will clear Firestore and re-seed with initial data.')) {
-      // Clear and re-seed
-      for (const cat of INITIAL_HANDBOOK) {
-        await setDoc(doc(db, 'handbook', cat.id), cat);
-      }
-      for (const calc of INITIAL_CALCULATORS) {
-        await setDoc(doc(db, 'calculators', calc.id), calc);
-      }
-      for (const video of INITIAL_VIDEOS) {
-        await setDoc(doc(db, 'videos', video.id), video);
+      setIsResetting(true);
+      try {
+        // Clear and re-seed Handbook
+        for (const cat of INITIAL_HANDBOOK) {
+          await setDoc(doc(db, 'handbook', cat.id), cat);
+        }
+        // Clear and re-seed Calculators
+        for (const calc of INITIAL_CALCULATORS) {
+          await setDoc(doc(db, 'calculators', calc.id), calc);
+        }
+        // Clear and re-seed Videos
+        for (const video of INITIAL_VIDEOS) {
+          await setDoc(doc(db, 'videos', video.id), video);
+        }
+        // Clear and re-seed Pages
+        await setDoc(doc(db, 'pages', 'privacy'), { title: 'Privacy Policy', content: '' });
+        await setDoc(doc(db, 'pages', 'terms'), { title: 'Terms and Conditions', content: '' });
+        
+        alert('Data reset successfully!');
+      } catch (error) {
+        console.error("Reset error", error);
+        alert('Error resetting data. Check console.');
+      } finally {
+        setIsResetting(false);
       }
     }
   };
@@ -1175,36 +1109,6 @@ function AdminScreen({
     setNewVideoTitle('');
     setNewVideoUrl('');
     setNewVideoThumbnail('');
-  };
-
-  const handleSaveSignUpField = async (field: Partial<SignUpField>) => {
-    if (!field.label) return;
-    const id = field.id || Date.now().toString();
-    const finalField: SignUpField = {
-      id,
-      label: field.label || '',
-      placeholder: field.placeholder || '',
-      type: field.type || 'text',
-      required: field.required ?? true,
-      order: field.order ?? (signUpFields.length + 1)
-    };
-    await setDoc(doc(db, 'signup_fields', id), finalField);
-    setEditingSignUpField(null);
-    if (!field.id) {
-      setNewSignUpField({
-        label: '',
-        placeholder: '',
-        type: 'text',
-        required: true,
-        order: signUpFields.length + 1
-      });
-    }
-  };
-
-  const handleDeleteSignUpField = async (id: string) => {
-    if (confirm('Are you sure you want to delete this field?')) {
-      await deleteDoc(doc(db, 'signup_fields', id));
-    }
   };
 
   const handleDeleteVideo = async (id: string) => {
@@ -1357,9 +1261,19 @@ function AdminScreen({
     <div className="p-4 space-y-6 pb-20">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-[#1b7d36]">అడ్మిన్ ప్యానెల్</h2>
-        <button onClick={onLogout} className="text-rose-500 font-bold hover:opacity-80 transition-opacity">
-          Logout
-        </button>
+        <div className="flex gap-4 items-center">
+          <button 
+            onClick={handleReset} 
+            disabled={isResetting}
+            className={`text-xs transition-colors ${isResetting ? 'text-stone-300' : 'text-stone-400 hover:text-rose-500'}`}
+            title="Reset App Data"
+          >
+            {isResetting ? 'Resetting...' : 'Reset Data'}
+          </button>
+          <button onClick={onLogout} className="text-rose-500 font-bold hover:opacity-80 transition-opacity">
+            Logout
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-2 bg-stone-100 p-1 rounded-2xl">
@@ -1386,12 +1300,6 @@ function AdminScreen({
           className={`flex-1 py-2 rounded-xl font-bold transition-all ${activeTab === 'pages' ? 'bg-white text-[#1b7d36] shadow-sm' : 'text-stone-400'}`}
         >
           Pages
-        </button>
-        <button 
-          onClick={() => setActiveTab('signup')}
-          className={`flex-1 py-2 rounded-xl font-bold transition-all ${activeTab === 'signup' ? 'bg-white text-[#1b7d36] shadow-sm' : 'text-stone-400'}`}
-        >
-          Sign Up
         </button>
       </div>
 
@@ -1638,7 +1546,7 @@ function AdminScreen({
             ))}
           </div>
         </div>
-      ) : activeTab === 'videos' ? (
+      ) : (
         <div className="space-y-6">
           {/* Video Editor Modal-like section */}
           {editingVideo && (
@@ -1773,130 +1681,6 @@ function AdminScreen({
             )}
           </div>
         </div>
-      ) : (
-        <div className="space-y-6">
-          <h3 className="text-[#1b7d36] font-bold">Sign Up Form Fields</h3>
-          
-          {/* Field Editor */}
-          {(editingSignUpField || !signUpFields.find(f => f.id === 'new')) && (
-            <div className="bg-emerald-50 p-6 rounded-[32px] border border-emerald-200 shadow-sm space-y-4">
-              <h4 className="text-emerald-800 font-bold">
-                {editingSignUpField ? 'Edit Field' : 'Add New Field'}
-              </h4>
-              <div className="grid grid-cols-1 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-emerald-600 uppercase">Label (Telugu/English)</label>
-                  <input 
-                    type="text" 
-                    value={editingSignUpField ? editingSignUpField.label : newSignUpField.label}
-                    onChange={e => editingSignUpField 
-                      ? setEditingSignUpField({ ...editingSignUpField, label: e.target.value })
-                      : setNewSignUpField({ ...newSignUpField, label: e.target.value })
-                    }
-                    placeholder="e.g. పూర్తి పేరు (Full Name)"
-                    className="w-full bg-white border border-emerald-200 rounded-2xl px-5 py-3 focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-emerald-600 uppercase">Placeholder</label>
-                  <input 
-                    type="text" 
-                    value={editingSignUpField ? editingSignUpField.placeholder : newSignUpField.placeholder}
-                    onChange={e => editingSignUpField 
-                      ? setEditingSignUpField({ ...editingSignUpField, placeholder: e.target.value })
-                      : setNewSignUpField({ ...newSignUpField, placeholder: e.target.value })
-                    }
-                    placeholder="e.g. మీ పేరును నమోదు చేయండి"
-                    className="w-full bg-white border border-emerald-200 rounded-2xl px-5 py-3 focus:outline-none"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-emerald-600 uppercase">Type</label>
-                    <select 
-                      value={editingSignUpField ? editingSignUpField.type : newSignUpField.type}
-                      onChange={e => editingSignUpField 
-                        ? setEditingSignUpField({ ...editingSignUpField, type: e.target.value as any })
-                        : setNewSignUpField({ ...newSignUpField, type: e.target.value as any })
-                      }
-                      className="w-full bg-white border border-emerald-200 rounded-2xl px-5 py-3 focus:outline-none"
-                    >
-                      <option value="text">Text</option>
-                      <option value="number">Number</option>
-                      <option value="tel">Phone</option>
-                      <option value="email">Email</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-emerald-600 uppercase">Order</label>
-                    <input 
-                      type="number" 
-                      value={editingSignUpField ? editingSignUpField.order : newSignUpField.order}
-                      onChange={e => editingSignUpField 
-                        ? setEditingSignUpField({ ...editingSignUpField, order: parseInt(e.target.value) || 0 })
-                        : setNewSignUpField({ ...newSignUpField, order: parseInt(e.target.value) || 0 })
-                      }
-                      className="w-full bg-white border border-emerald-200 rounded-2xl px-5 py-3 focus:outline-none"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="required-check"
-                    checked={editingSignUpField ? editingSignUpField.required : newSignUpField.required}
-                    onChange={e => editingSignUpField 
-                      ? setEditingSignUpField({ ...editingSignUpField, required: e.target.checked })
-                      : setNewSignUpField({ ...newSignUpField, required: e.target.checked })
-                    }
-                  />
-                  <label htmlFor="required-check" className="text-sm font-bold text-emerald-800">Required Field</label>
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <button 
-                    onClick={() => handleSaveSignUpField(editingSignUpField || newSignUpField)}
-                    className="flex-1 bg-emerald-600 text-white py-3 rounded-2xl font-bold shadow-md"
-                  >
-                    {editingSignUpField ? 'Update' : 'Add Field'}
-                  </button>
-                  {editingSignUpField && (
-                    <button 
-                      onClick={() => setEditingSignUpField(null)}
-                      className="flex-1 bg-stone-200 text-stone-600 py-3 rounded-2xl font-bold"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-4">
-            {signUpFields.map(field => (
-              <div key={field.id} className="bg-white p-6 rounded-[32px] border border-black/5 shadow-sm flex items-center justify-between">
-                <div className="space-y-1">
-                  <h4 className="font-bold text-stone-800">{field.label}</h4>
-                  <p className="text-xs text-stone-400">Type: {field.type} • Order: {field.order} • {field.required ? 'Required' : 'Optional'}</p>
-                </div>
-                <div className="flex gap-4">
-                  <button 
-                    onClick={() => setEditingSignUpField(field)}
-                    className="text-blue-500 font-bold text-sm"
-                  >
-                    Edit
-                  </button>
-                  <button 
-                    onClick={() => handleDeleteSignUpField(field.id)}
-                    className="text-rose-500 font-bold text-sm"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       )}
     </div>
   );
@@ -1930,36 +1714,6 @@ function ItemEditor({ catId, item, onSave, onCancel }: {
     setEditedItem({
       ...editedItem,
       sections: editedItem.sections.filter(s => s.id !== id)
-    });
-  };
-
-  const resizeImage = (base64Str: string, maxWidth = 800, maxHeight = 600): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = base64Str;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > maxWidth) {
-            height *= maxWidth / width;
-            width = maxWidth;
-          }
-        } else {
-          if (height > maxHeight) {
-            width *= maxHeight / height;
-            height = maxHeight;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
-      };
     });
   };
 
@@ -2093,7 +1847,6 @@ function LoginScreen({ onLogin, signUpFields }: { onLogin: () => void, signUpFie
   const [isSignUp, setIsSignUp] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2116,19 +1869,16 @@ function LoginScreen({ onLogin, signUpFields }: { onLogin: () => void, signUpFie
           createdAt: new Date().toISOString()
         });
 
-        await sendEmailVerification(userCredential.user);
-        await signOut(auth); // Sign out immediately as per requirement
-        setVerificationEmail(email);
+        // Optional: send verification but don't force it for now to fix access issues
+        try {
+          await sendEmailVerification(userCredential.user);
+        } catch (e) {
+          console.warn("Verification email failed", e);
+        }
+        
+        onLogin();
       } else {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        const isAdmin = userCredential.user.email === 'prakruthimithra2026@gmail.com';
-        
-        if (!userCredential.user.emailVerified && !isAdmin) {
-          const userEmail = userCredential.user.email;
-          await signOut(auth);
-          setVerificationEmail(userEmail);
-          return;
-        }
         onLogin();
       }
     } catch (err: any) {
@@ -2156,31 +1906,6 @@ function LoginScreen({ onLogin, signUpFields }: { onLogin: () => void, signUpFie
       setLoading(false);
     }
   };
-
-  if (verificationEmail) {
-    return (
-      <div className="p-4 flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="bg-white p-8 rounded-[40px] border border-black/5 shadow-lg w-full max-w-md space-y-6 text-center">
-          <div className="bg-[#f0fdf4] w-16 h-16 rounded-full flex items-center justify-center mx-auto">
-            <Mail className="text-[#1b7d36]" size={32} />
-          </div>
-          <h2 className="text-xl font-bold text-stone-800">Verify Your Email</h2>
-          <p className="text-stone-600">
-            We have sent you a verification email to <span className="font-bold">{verificationEmail}</span>. Please verify it and log in.
-          </p>
-          <button 
-            onClick={() => {
-              setVerificationEmail(null);
-              setIsSignUp(false);
-            }}
-            className="w-full bg-[#1b7d36] text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-[#16652b] transition-colors"
-          >
-            Login
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   const getTitle = () => {
     if (isForgotPassword) return 'Forgot Password';
@@ -2332,165 +2057,6 @@ function InputsScreen({ onSelectInput }: { onSelectInput: (i: NaturalInput) => v
   );
 }
 
-function ChatScreen() {
-  const [messages, setMessages] = useState<{ role: string, parts: { text?: string, inlineData?: { mimeType: string, data: string } }[] }[]>([]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<{ mimeType: string, data: string } | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = (reader.result as string).split(',')[1];
-        setSelectedImage({
-          mimeType: file.type,
-          data: base64
-        });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSend = async () => {
-    if ((!input.trim() && !selectedImage) || isLoading) return;
-
-    const userMessage = input;
-    const currentImage = selectedImage;
-    
-    setInput('');
-    setSelectedImage(null);
-
-    const userParts: any[] = [];
-    if (userMessage) userParts.push({ text: userMessage });
-    if (currentImage) userParts.push({ inlineData: currentImage });
-
-    setMessages(prev => [...prev, { role: 'user', parts: userParts }]);
-    setIsLoading(true);
-
-    const response = await chatWithPrakritiMitra(userMessage || "చిత్రాన్ని విశ్లేషించండి", messages, currentImage || undefined);
-    
-    setMessages(prev => [...prev, { role: 'model', parts: [{ text: response || '' }] }]);
-    setIsLoading(false);
-  };
-
-  return (
-    <div className="flex flex-col h-[calc(100vh-140px)] p-4">
-      <div className="flex-1 overflow-y-auto space-y-4 pb-4 px-2" ref={scrollRef}>
-        {messages.length === 0 && (
-          <div className="text-center py-10 space-y-4">
-            <div className="bg-emerald-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
-              <MessageSquare className="text-[#1b7d36]" size={32} />
-            </div>
-            <h3 className="text-xl font-bold">నేను మీకు ఎలా సహాయపడగలను?</h3>
-            <p className="text-stone-500 max-w-xs mx-auto text-sm">ప్రకృతి వ్యవసాయం గురించి ఏదైనా అడగండి లేదా ఫోటో తీసి పంపండి.</p>
-          </div>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] p-4 rounded-2xl shadow-sm relative group ${m.role === 'user' ? 'bg-[#1b7d36] text-white rounded-tr-none' : 'bg-white text-stone-800 rounded-tl-none border border-black/5'}`}>
-              <div className="space-y-2">
-                {m.parts.map((part, idx) => (
-                  <React.Fragment key={idx}>
-                    {part.text && (
-                      <div className="prose prose-sm prose-stone max-w-none text-inherit">
-                        <ReactMarkdown>{part.text}</ReactMarkdown>
-                      </div>
-                    )}
-                    {part.inlineData && (
-                      <img 
-                        src={`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`} 
-                        alt="User upload" 
-                        className="rounded-lg max-w-full h-auto border border-black/10"
-                      />
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-              {m.role === 'model' && m.parts[0].text && (
-                <div className={`flex justify-end mt-1 border-t border-black/5 pt-1 opacity-60`}>
-                  <TTSButton text={m.parts[0].text} />
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-black/5 shadow-sm">
-              <div className="flex gap-1">
-                <div className="w-2 h-2 bg-stone-300 rounded-full animate-bounce" />
-                <div className="w-2 h-2 bg-stone-300 rounded-full animate-bounce delay-75" />
-                <div className="w-2 h-2 bg-stone-300 rounded-full animate-bounce delay-150" />
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-      
-      {selectedImage && (
-        <div className="mb-2 p-2 bg-white rounded-2xl border border-emerald-100 flex items-center gap-3 shadow-sm">
-          <img 
-            src={`data:${selectedImage.mimeType};base64,${selectedImage.data}`} 
-            className="w-12 h-12 rounded-lg object-cover" 
-          />
-          <span className="text-xs font-bold text-stone-500 flex-1">Image selected</span>
-          <button onClick={() => setSelectedImage(null)} className="p-1 text-rose-500">
-            <X size={16} />
-          </button>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2 px-2">
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="p-2 bg-stone-100 text-stone-600 rounded-full hover:bg-stone-200 transition-colors"
-            title="Upload from Gallery"
-          >
-            <ImageIcon size={20} />
-          </button>
-          
-          <input 
-            type="file" 
-            accept="image/*" 
-            className="hidden" 
-            ref={fileInputRef}
-            onChange={handleImageUpload}
-          />
-        </div>
-
-        <div className="flex gap-2">
-          <input 
-            type="text" 
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyPress={e => e.key === 'Enter' && handleSend()}
-            placeholder="మీ ప్రశ్నను ఇక్కడ టైప్ చేయండి..."
-            className="flex-1 bg-white border border-stone-200 rounded-full px-5 py-3 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1b7d36]/20 text-sm"
-          />
-          <button 
-            onClick={handleSend}
-            disabled={isLoading}
-            className="bg-[#1b7d36] text-white p-3 rounded-full shadow-md hover:scale-105 transition-transform disabled:opacity-50"
-          >
-            <Send size={20} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function HandbookScreen({ onNavigate, categories }: { onNavigate: (s: Screen) => void, categories: HandbookCategory[] }) {
   const [selectedItem, setSelectedItem] = useState<HandbookItem | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<HandbookCategory | null>(null);
@@ -2510,10 +2076,7 @@ function HandbookScreen({ onNavigate, categories }: { onNavigate: (s: Screen) =>
             <img src={selectedItem.image} alt={selectedItem.name} className="w-full aspect-video object-cover" referrerPolicy="no-referrer" />
           )}
           <div className="p-8 space-y-6">
-            <div className="flex justify-between items-start">
-              <h2 className="text-xl font-bold text-[#1b7d36]">{selectedItem.name}</h2>
-              <TTSButton text={`${selectedItem.name}. ${selectedItem.sections.map(s => `${s.title}. ${s.content}`).join('. ')}`} />
-            </div>
+            <h2 className="text-xl font-bold text-[#1b7d36]">{selectedItem.name}</h2>
             
             <div className="space-y-8">
               {selectedItem.sections.map((section) => (
